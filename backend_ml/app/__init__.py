@@ -1,0 +1,2 @@
+"""MeetingAgent backend package."""
+
