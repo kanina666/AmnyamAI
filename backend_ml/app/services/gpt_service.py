@@ -1,6 +1,7 @@
 import asyncio
 import json
-from typing import Any
+import logging
+import re
 
 from pydantic import ValidationError
 
@@ -11,56 +12,82 @@ from app.utils.prompt_templates import (
     build_meeting_analysis_prompt,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class GPTAnalysisError(RuntimeError):
     pass
 
 
 class YandexGPTService:
+    MODEL_ALIASES = {
+        "yandexgpt-5-1-pro": "yandexgpt-5.1",
+        "yandexgpt-5.1-pro": "yandexgpt-5.1",
+    }
+
     def __init__(self) -> None:
-        if not settings.yandex_auth_token:
-            raise GPTAnalysisError("Yandex IAM token or API key is not configured")
+        api_key = settings.yandex_cloud_api_key or settings.yandex_api_key
+        if not api_key:
+            raise GPTAnalysisError("Yandex Cloud API key is not configured")
+        if not settings.yandex_effective_folder_id:
+            raise GPTAnalysisError("Yandex Cloud folder ID is not configured")
+
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise GPTAnalysisError("openai package is not installed") from exc
+
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://llm.api.cloud.yandex.net/v1",
+        )
+        self.model_uri = self._build_model_uri(settings.yandex_gpt_model)
 
     async def analyze_meeting(self, transcript: str) -> MeetingAnalysis:
-        raw_text = await asyncio.to_thread(self._run_completion, transcript)
         try:
+            raw_text = await asyncio.to_thread(self._run_completion, transcript)
+            raw_text = self._extract_json(raw_text)
             payload = json.loads(raw_text)
-            analysis = MeetingAnalysis.model_validate({**payload, "raw": payload})
+            analysis = MeetingAnalysis.model_validate(payload)
         except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+            logger.exception(
+                "YandexGPT returned invalid analysis JSON: %s",
+                raw_text[:1000] if "raw_text" in locals() else None,
+            )
             raise GPTAnalysisError("YandexGPT returned invalid analysis JSON") from exc
         return analysis
 
     def _run_completion(self, transcript: str) -> str:
         try:
-            from yandex_ai_studio_sdk import AIStudio
-        except ImportError as exc:
-            raise GPTAnalysisError("yandex-ai-studio-sdk is not installed") from exc
+            response = self.client.chat.completions.create(
+                model=self.model_uri,
+                messages=[
+                    {"role": "system", "content": MEETING_ANALYSIS_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": build_meeting_analysis_prompt(transcript),
+                    },
+                ],
+                temperature=settings.yandex_gpt_temperature,
+                max_tokens=settings.yandex_gpt_max_tokens,
+                response_format={"type": "json_object"},
+            )
+        except Exception as exc:
+            logger.exception("YandexGPT request failed")
+            raise GPTAnalysisError(f"YandexGPT request failed: {exc}") from exc
 
-        sdk = AIStudio(
-            folder_id=settings.yandex_folder_id,
-            auth=settings.yandex_auth_token,
-        )
-        model = sdk.models.completions(
-            settings.yandex_gpt_model,
-            model_version=settings.yandex_gpt_model_version,
-        )
-        model = model.configure(
-            temperature=settings.yandex_gpt_temperature,
-            max_tokens=settings.yandex_gpt_max_tokens,
-            response_format="json",
-        )
-        result = model.run(
-            [
-                {"role": "system", "text": MEETING_ANALYSIS_SYSTEM_PROMPT},
-                {"role": "user", "text": build_meeting_analysis_prompt(transcript)},
-            ]
-        )
-        if not result:
-            raise GPTAnalysisError("YandexGPT returned no alternatives")
-
-        first = result[0]
-        text = getattr(first, "text", None)
+        text = response.choices[0].message.content
         if not isinstance(text, str) or not text.strip():
             raise GPTAnalysisError("YandexGPT returned empty text")
         return text.strip()
 
+    def _build_model_uri(self, model: str) -> str:
+        if model.startswith("gpt://"):
+            return model
+
+        model = self.MODEL_ALIASES.get(model, model)
+        return f"gpt://{settings.yandex_effective_folder_id}/{model}"
+
+    @staticmethod
+    def _extract_json(text: str) -> str:
+        return re.sub(r"```(?:json)?\s?|```", "", text).strip()
