@@ -8,6 +8,10 @@ from sqlalchemy import func, select
 from app.core.security import decode_access_token
 from app.db.models import Meeting, MeetingStatus, TranscriptSegment
 from app.db.session import AsyncSessionLocal
+from app.services.meeting_access import (
+    ensure_meeting_participant,
+    find_meeting_by_identifier,
+)
 from app.services.stt_service import STTResult, SpeechKitStreamingClient
 from app.utils.audio_utils import validate_pcm16_mono_chunk
 
@@ -27,15 +31,15 @@ async def stream_meeting_audio(websocket: WebSocket, meeting_id: str) -> None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    canonical_meeting_id = meeting_id
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Meeting).where(Meeting.id == meeting_id, Meeting.owner_id == user_id)
-        )
-        meeting = result.scalar_one_or_none()
-        if meeting is None:
+        meeting, is_ambiguous = await find_meeting_by_identifier(db, meeting_id)
+        if meeting is None or is_ambiguous:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
+        canonical_meeting_id = meeting.id
+        await ensure_meeting_participant(db, meeting, user_id)
         meeting.status = MeetingStatus.RECORDING
         meeting.started_at = meeting.started_at or datetime.now(UTC)
         await db.commit()
@@ -44,7 +48,7 @@ async def stream_meeting_audio(websocket: WebSocket, meeting_id: str) -> None:
 
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=64)
     recognizer_task = asyncio.create_task(
-        _recognize_and_emit(websocket, meeting_id, audio_queue)
+        _recognize_and_emit(websocket, canonical_meeting_id, audio_queue)
     )
 
     try:
@@ -58,7 +62,7 @@ async def stream_meeting_audio(websocket: WebSocket, meeting_id: str) -> None:
         await audio_queue.put(None)
         await recognizer_task
         async with AsyncSessionLocal() as db:
-            meeting = await db.get(Meeting, meeting_id)
+            meeting = await db.get(Meeting, canonical_meeting_id)
             if meeting and meeting.status == MeetingStatus.RECORDING:
                 meeting.status = MeetingStatus.PROCESSING
                 meeting.ended_at = datetime.now(UTC)

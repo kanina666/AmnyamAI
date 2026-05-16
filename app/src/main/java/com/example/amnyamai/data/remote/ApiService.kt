@@ -26,6 +26,9 @@ interface ApiService {
     @GET("api/v1/meetings/{id}")
     suspend fun getMeeting(@Path("id") id: String): Response<MeetingReadDto>
 
+    @POST("api/v1/meetings/join/{identifier}")
+    suspend fun joinMeeting(@Path("identifier") identifier: String): Response<MeetingReadDto>
+
     @POST("api/v1/meetings/{id}/finish")
     suspend fun finishMeeting(@Path("id") id: String): Response<List<TaskReadDto>>
 

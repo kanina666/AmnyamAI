@@ -2,7 +2,16 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -42,6 +51,10 @@ class User(Base):
 
     meetings: Mapped[list["Meeting"]] = relationship(back_populates="owner")
     tasks: Mapped[list["Task"]] = relationship(back_populates="owner")
+    meeting_participations: Mapped[list["MeetingParticipant"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class Meeting(Base):
@@ -73,6 +86,29 @@ class Meeting(Base):
         back_populates="meeting",
         cascade="all, delete-orphan",
     )
+    participants: Mapped[list["MeetingParticipant"]] = relationship(
+        back_populates="meeting",
+        cascade="all, delete-orphan",
+    )
+
+
+class MeetingParticipant(Base):
+    __tablename__ = "meeting_participants"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "user_id", name="uq_meeting_participant"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    meeting: Mapped[Meeting] = relationship(back_populates="participants")
+    user: Mapped[User] = relationship(back_populates="meeting_participations")
 
 
 class TranscriptSegment(Base):

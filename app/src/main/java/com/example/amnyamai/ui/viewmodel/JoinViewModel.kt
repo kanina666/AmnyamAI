@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.amnyamai.data.model.Meeting
-import com.example.amnyamai.data.model.MeetingStatus
 import com.example.amnyamai.data.remote.RetrofitClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,22 +33,12 @@ class JoinViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = JoinUiState.Loading
         viewModelScope.launch {
             try {
-                val res = RetrofitClient.apiService.listMeetings()
+                val res = RetrofitClient.apiService.joinMeeting(normalized)
                 if (!res.isSuccessful || res.body() == null) {
-                    _uiState.value = JoinUiState.Error("Ошибка поиска: ${res.code()}")
+                    _uiState.value = JoinUiState.Error("Ошибка подключения: ${res.code()}")
                     return@launch
                 }
-                val found = res.body()!!.firstOrNull { dto ->
-                    dto.id.take(8).uppercase() == normalized
-                }
-                if (found != null) {
-                    // Found in the user's own meetings — navigate to result
-                    _meetingEnded.value = found.id
-                } else {
-                    _uiState.value = JoinUiState.Error(
-                        "Встреча не найдена. Убедитесь, что вы ввели правильный код организатора."
-                    )
-                }
+                _meetingEnded.value = res.body()!!.id
             } catch (e: Exception) {
                 _uiState.value = JoinUiState.Error(e.message ?: "Ошибка подключения к серверу")
             }

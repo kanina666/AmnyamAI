@@ -34,10 +34,17 @@ http://localhost:8000/docs
 
 ## Android audio stream
 
+Join an existing meeting by full UUID or the short 8-character code:
+
+```text
+POST /api/v1/meetings/join/{identifier}
+Authorization: Bearer {jwt}
+```
+
 Open:
 
 ```text
-ws://localhost:8000/ws/meetings/{meeting_id}/audio?token={jwt}
+ws://localhost:8000/ws/meetings/{meeting_id_or_code}/audio?token={jwt}
 ```
 
 Send raw PCM bytes:
