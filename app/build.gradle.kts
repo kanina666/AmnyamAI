@@ -67,8 +67,12 @@ dependencies {
     // Gson
     implementation(libs.gson)
 
-    // Google Sign-In
+    // Google Authorization API (для serverAuthCode)
     implementation(libs.play.services.auth)
+    // Credential Manager
+    implementation(libs.credentials)
+    implementation(libs.credentials.auth)
+    implementation(libs.googleid)
 
     // Coil — GIF поддержка
     implementation(libs.coil.compose)
