@@ -106,8 +106,9 @@ class SpeechKitStreamingClient:
 
     @staticmethod
     def _build_metadata() -> tuple[tuple[str, str], ...]:
-        if settings.yandex_api_key:
-            return (("authorization", f"Api-Key {settings.yandex_api_key}"),)
+        api_key = settings.yandex_cloud_api_key or settings.yandex_api_key
+        if api_key:
+            return (("authorization", f"Api-Key {api_key}"),)
         return (("authorization", f"Bearer {settings.yandex_iam_token}"),)
 
     @staticmethod
@@ -142,4 +143,3 @@ class SpeechKitStreamingClient:
             is_final=is_final,
             event_type=event_type,
         )
-

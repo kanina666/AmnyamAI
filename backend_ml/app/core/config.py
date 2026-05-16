@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://meetingagent:meetingagent@db:5432/meetingagent"
     )
+    database_connect_retries: int = 20
+    database_connect_retry_delay_seconds: float = 2.0
 
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
@@ -29,11 +31,13 @@ class Settings(BaseSettings):
 
     yandex_iam_token: str | None = None
     yandex_api_key: str | None = None
+    yandex_cloud_api_key: str | None = None
     yandex_folder_id: str = "replace-me"
-    yandex_gpt_model: str = "yandexgpt"
+    yandex_cloud_folder_id: str | None = None
+    yandex_gpt_model: str = "yandexgpt-5.1"
     yandex_gpt_model_version: str = "pro"
-    yandex_gpt_temperature: float = 0.2
-    yandex_gpt_max_tokens: int = 4000
+    yandex_gpt_temperature: float = 0.3
+    yandex_gpt_max_tokens: int = 2000
     speechkit_endpoint: str = "stt.api.cloud.yandex.net:443"
     speechkit_language_code: str = "ru-RU"
     speechkit_sample_rate_hertz: int = 16000
@@ -49,7 +53,16 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def yandex_auth_token(self) -> str | None:
-        return self.yandex_api_key or self.yandex_iam_token
+        return (
+            self.yandex_cloud_api_key
+            or self.yandex_api_key
+            or self.yandex_iam_token
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def yandex_effective_folder_id(self) -> str:
+        return self.yandex_cloud_folder_id or self.yandex_folder_id
 
 
 @lru_cache
