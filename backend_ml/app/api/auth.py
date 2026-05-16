@@ -28,7 +28,7 @@ async def google_callback(
     code: str = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
-    token_payload = await exchange_google_code(code)
+    token_payload = await exchange_google_code(code, redirect_uri="")
     access_token = token_payload.get("access_token")
     if not access_token:
         raise HTTPException(
