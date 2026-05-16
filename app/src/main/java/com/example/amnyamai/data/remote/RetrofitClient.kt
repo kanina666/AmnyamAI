@@ -10,7 +10,7 @@ object RetrofitClient {
 
     // Для эмулятора: http://10.0.2.2:8000/
     // Для реального устройства: http://<IP сервера>:8000/
-    const val BASE_URL = "http://10.0.2.2:8000/"
+    const val BASE_URL = "http://192.168.1.218:8000/"
 
     @Volatile private var token: String? = null
 

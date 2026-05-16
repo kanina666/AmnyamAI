@@ -70,6 +70,10 @@ dependencies {
     // Google Sign-In
     implementation(libs.play.services.auth)
 
+    // Coil — GIF поддержка
+    implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

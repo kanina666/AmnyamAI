@@ -15,6 +15,11 @@ class MeetingRepository(context: Context) {
     private val api = RetrofitClient.apiService
     val userStorage = UserStorage(context)
 
+    companion object {
+        // Shared across ViewModel instances so finishMeeting result is available to ResultViewModel
+        private val taskCache = mutableMapOf<String, List<Task>>()
+    }
+
     suspend fun createMeeting(title: String): Result<Pair<String, String>> {
         return try {
             val res = api.createMeeting(MeetingCreateRequest(title))
@@ -39,6 +44,7 @@ class MeetingRepository(context: Context) {
                         meetingId = meetingId
                     )
                 }
+                taskCache[meetingId] = tasks
                 Result.success(tasks)
             } else Result.failure(Exception("Ошибка анализа: ${res.code()}"))
         } catch (e: Exception) { Result.failure(e) }
@@ -47,26 +53,29 @@ class MeetingRepository(context: Context) {
     suspend fun getCompletedMeeting(meetingId: String): Result<Meeting> {
         return try {
             val meetingRes = api.getMeeting(meetingId)
-            val tasksRes = api.listTasks()
-
             if (!meetingRes.isSuccessful || meetingRes.body() == null)
                 return Result.failure(Exception("Встреча не найдена: ${meetingRes.code()}"))
-            if (!tasksRes.isSuccessful || tasksRes.body() == null)
-                return Result.failure(Exception("Ошибка загрузки задач: ${tasksRes.code()}"))
 
             val meetingDto = meetingRes.body()!!
-            val tasks = tasksRes.body()!!
-                .filter { it.meeting_id == meetingId }
-                .map { dto ->
-                    Task(
-                        id = dto.id,
-                        title = dto.title,
-                        description = dto.description ?: "",
-                        assignee = dto.speaker_tag,
-                        deadline = dto.due_at,
-                        meetingId = meetingId
-                    )
-                }
+
+            // Use tasks cached from finishMeeting if available; otherwise fetch
+            val tasks = taskCache[meetingId] ?: run {
+                val tasksRes = api.listTasks()
+                if (!tasksRes.isSuccessful || tasksRes.body() == null)
+                    return Result.failure(Exception("Ошибка загрузки задач: ${tasksRes.code()}"))
+                tasksRes.body()!!
+                    .filter { it.meeting_id == meetingId }
+                    .map { dto ->
+                        Task(
+                            id = dto.id,
+                            title = dto.title,
+                            description = dto.description ?: "",
+                            assignee = dto.speaker_tag,
+                            deadline = dto.due_at,
+                            meetingId = meetingId
+                        )
+                    }
+            }
 
             Result.success(
                 Meeting(

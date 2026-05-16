@@ -18,9 +18,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+data class TranscriptLine(val speaker: String, val text: String)
+
 sealed class RecordingUiState {
     object Idle : RecordingUiState()
-    data class Recording(val seconds: Long, val participants: List<String>) : RecordingUiState()
+    data class Recording(
+        val seconds: Long,
+        val participants: List<String>,
+        val transcriptLines: List<TranscriptLine> = emptyList()
+    ) : RecordingUiState()
     object Uploading : RecordingUiState()
     data class Error(val message: String) : RecordingUiState()
 }
@@ -60,7 +66,16 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         webSocket = MeetingWebSocket(
             meetingId = meetingId,
             token = token,
-            onTranscript = { _, _, _ -> }
+            onTranscript = { speaker, text, isFinal ->
+                if (isFinal && text.isNotBlank()) {
+                    viewModelScope.launch {
+                        val cur = _uiState.value as? RecordingUiState.Recording ?: return@launch
+                        val newLines = (cur.transcriptLines + TranscriptLine(speaker, text)).takeLast(10)
+                        val speakers = (cur.participants + speaker).distinct()
+                        _uiState.value = cur.copy(transcriptLines = newLines, participants = speakers)
+                    }
+                }
+            }
         ).also { it.connect() }
 
         app.startForegroundService(Intent(app, RecordingService::class.java))
@@ -69,23 +84,26 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.value = RecordingUiState.Recording(0, emptyList())
     }
 
+    fun reset() { _uiState.value = RecordingUiState.Idle }
+
     fun stopAndUpload() {
         timerJob?.cancel()
         recService?.stopRecording()
         unbind()
         webSocket?.disconnect()
         webSocket = null
-        analyzeAndNavigate()
+        viewModelScope.launch {
+            delay(400L) // let WebSocket CLOSE frame reach server before finishMeeting
+            analyzeAndNavigate()
+        }
     }
 
-    private fun analyzeAndNavigate() {
+    private suspend fun analyzeAndNavigate() {
         _uiState.value = RecordingUiState.Uploading
-        viewModelScope.launch {
-            repository.finishMeeting(meetingId).fold(
-                onSuccess = { _navigateToResult.value = meetingId },
-                onFailure = { _uiState.value = RecordingUiState.Error(it.message ?: "Ошибка анализа") }
-            )
-        }
+        repository.finishMeeting(meetingId).fold(
+            onSuccess = { _navigateToResult.value = meetingId },
+            onFailure = { _uiState.value = RecordingUiState.Error(it.message ?: "Ошибка анализа") }
+        )
     }
 
     private fun startTimer() {

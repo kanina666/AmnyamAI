@@ -15,9 +15,14 @@ sealed class ResultUiState {
         val summary: String,
         val tasks: List<Task>,
         val currentIndex: Int = 0,
-        val isSaving: Boolean = false
+        val acceptedTasks: List<Task> = emptyList()
     ) : ResultUiState()
-    object AllDone : ResultUiState()
+    data class AllDone(
+        val acceptedTasks: List<Task>,
+        val summary: String,
+        val isSaving: Boolean = false,
+        val saved: Boolean = false
+    ) : ResultUiState()
     data class Error(val message: String) : ResultUiState()
 }
 
@@ -30,16 +35,21 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
 
     private var loadedId = ""
 
+    fun reload(meetingId: String) {
+        loadedId = ""
+        load(meetingId)
+    }
+
     fun load(meetingId: String) {
         if (loadedId == meetingId) return
         loadedId = meetingId
         viewModelScope.launch {
             repository.getCompletedMeeting(meetingId).fold(
                 onSuccess = { meeting ->
-                    if (meeting.tasks.isEmpty())
-                        _uiState.value = ResultUiState.AllDone
+                    _uiState.value = if (meeting.tasks.isEmpty())
+                        ResultUiState.AllDone(emptyList(), meeting.summary)
                     else
-                        _uiState.value = ResultUiState.Ready(meeting.summary, meeting.tasks)
+                        ResultUiState.Ready(meeting.summary, meeting.tasks)
                 },
                 onFailure = { _uiState.value = ResultUiState.Error(it.message ?: "Ошибка") }
             )
@@ -48,21 +58,33 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
 
     fun acceptTask(task: Task) {
         val state = _uiState.value as? ResultUiState.Ready ?: return
-        viewModelScope.launch {
-            repository.confirmAndSyncTask(task)
-        }
-        advance(state)
+        val newAccepted = state.acceptedTasks + task
+        val next = state.currentIndex + 1
+        _uiState.value = if (next >= state.tasks.size)
+            ResultUiState.AllDone(newAccepted, state.summary)
+        else
+            state.copy(currentIndex = next, acceptedTasks = newAccepted)
     }
 
     fun rejectTask() {
         val state = _uiState.value as? ResultUiState.Ready ?: return
-        advance(state)
+        val next = state.currentIndex + 1
+        _uiState.value = if (next >= state.tasks.size)
+            ResultUiState.AllDone(state.acceptedTasks, state.summary)
+        else
+            state.copy(currentIndex = next)
     }
 
-    private fun advance(state: ResultUiState.Ready) {
-        val next = state.currentIndex + 1
-        _uiState.value = if (next >= state.tasks.size) ResultUiState.AllDone
-        else state.copy(currentIndex = next)
+    fun saveToCalendar() {
+        val state = _uiState.value as? ResultUiState.AllDone ?: return
+        if (state.isSaving || state.saved) return
+        _uiState.value = state.copy(isSaving = true)
+        viewModelScope.launch {
+            state.acceptedTasks.forEach { task ->
+                repository.confirmAndSyncTask(task)
+            }
+            _uiState.value = state.copy(isSaving = false, saved = true)
+        }
     }
 
     fun updateTaskTitle(index: Int, newTitle: String) {
@@ -71,8 +93,6 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
         val task = updated[index]
         updated[index] = task.copy(title = newTitle)
         _uiState.value = state.copy(tasks = updated)
-        viewModelScope.launch {
-            repository.updateTaskTitle(task.id, newTitle)
-        }
+        viewModelScope.launch { repository.updateTaskTitle(task.id, newTitle) }
     }
 }

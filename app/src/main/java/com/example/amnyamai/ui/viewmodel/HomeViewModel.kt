@@ -3,6 +3,7 @@ package com.example.amnyamai.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.amnyamai.data.remote.RetrofitClient
 import com.example.amnyamai.data.repository.MeetingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,4 +36,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reset() { _uiState.value = HomeUiState.Idle }
+
+    fun logout() {
+        repository.userStorage.clear()
+        RetrofitClient.setToken(null)
+    }
 }

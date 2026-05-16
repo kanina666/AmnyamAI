@@ -4,8 +4,10 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -34,7 +36,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,8 +43,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -51,10 +52,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.amnyamai.ui.components.AmNyam
+import com.example.amnyamai.ui.components.AmNyamErrorDialog
 import com.example.amnyamai.ui.viewmodel.RecordingUiState
 import com.example.amnyamai.ui.viewmodel.RecordingViewModel
+import com.example.amnyamai.ui.viewmodel.TranscriptLine
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val RecRed = Color(0xFFE24B4A)
+
 @Composable
 fun RecordingScreen(meetingId: String, code: String, onDone: (String) -> Unit) {
     val vm: RecordingViewModel = viewModel()
@@ -76,117 +81,315 @@ fun RecordingScreen(meetingId: String, code: String, onDone: (String) -> Unit) {
         if (results[Manifest.permission.RECORD_AUDIO] == true) vm.start(meetingId)
     }
 
-    LaunchedEffect(Unit) { permLauncher.launch(permissions) }
+    when (val state = uiState) {
+        is RecordingUiState.Idle -> IdleLayout(
+            onStart = { permLauncher.launch(permissions) }
+        )
+        is RecordingUiState.Recording -> ActiveLayout(
+            state   = state,
+            code    = code,
+            onStop  = { vm.stopAndUpload() },
+            onCopy  = { clipboard.setText(AnnotatedString(code)) }
+        )
+        is RecordingUiState.Uploading -> UploadingLayout()
+        is RecordingUiState.Error -> AmNyamErrorDialog(
+            message = state.message,
+            onDismiss = { vm.reset() },
+            onRetry = { vm.stopAndUpload() }
+        )
+    }
+}
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Запись встречи") }) }) { padding ->
-        when (val state = uiState) {
-            is RecordingUiState.Recording -> RecordingContent(
-                state = state, code = code,
-                onStop = { vm.stopAndUpload() },
-                onCopyCode = { clipboard.setText(AnnotatedString(code)) }
+// ── Экран ожидания (до начала записи) ────────────────────────────────────────
+
+@Composable
+private fun IdleLayout(onStart: () -> Unit) {
+    // Глаза смотрят чуть вниз — на кнопку
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        AmNyam(
+            modifier   = Modifier.size(220.dp),
+            eyeLookY   = 0.7f,
+            mouthOpenFraction = 0f
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Нажми и Ам Ням начнёт слушать",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(48.dp))
+        Button(
+            onClick = onStart,
+            modifier = Modifier.fillMaxWidth().height(64.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(
+                "Начать запись встречи",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
             )
-            is RecordingUiState.Uploading -> Box(
-                Modifier.fillMaxSize().padding(padding), Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(Modifier.size(64.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text("Загружаем запись...", style = MaterialTheme.typography.titleMedium)
-                    Text("Alice AI анализирует встречу", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            is RecordingUiState.Error -> Box(
-                Modifier.fillMaxSize().padding(padding), Alignment.Center
-            ) {
-                Text(state.message, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-            }
-            else -> {}
         }
     }
 }
 
+// ── Активная запись ───────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecordingContent(
+private fun ActiveLayout(
     state: RecordingUiState.Recording,
     code: String,
     onStop: () -> Unit,
-    onCopyCode: () -> Unit
+    onCopy: () -> Unit
 ) {
-    val pulse = rememberInfiniteTransition(label = "pulse")
-    val scale by pulse.animateFloat(
-        0.85f, 1.15f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "s"
+    // Рот открывается
+    val mouthOpen by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(400),
+        label = "mouth"
     )
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Meeting code card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            onClick = onCopyCode
-        ) {
-            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Код для участников", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text(
-                    code, style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold, letterSpacing = 6.sp,
-                    color = MaterialTheme.colorScheme.primary
+    // Прыжки вверх-вниз
+    val jumpTransition = rememberInfiniteTransition(label = "jump")
+    val jumpOffset by jumpTransition.animateFloat(
+        initialValue = 0f,
+        targetValue  = -36f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(380, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "jump"
+    )
+
+    // Глаза смотрят чуть влево-вправо во время записи
+    val eyeTransition = rememberInfiniteTransition(label = "eye_rec")
+    val eyeLookX by eyeTransition.animateFloat(
+        initialValue = -0.5f,
+        targetValue  =  0.5f,
+        animationSpec = infiniteRepeatable(
+            tween(1800), RepeatMode.Reverse
+        ),
+        label = "eyeX_rec"
+    )
+
+    Scaffold(
+        topBar = { RecStatusBar(state.seconds) },
+        bottomBar = {
+            Button(
+                onClick = onStop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = RecRed)
+            ) {
+                Box(
+                    Modifier
+                        .size(16.dp)
+                        .background(Color.White, RoundedCornerShape(3.dp))
                 )
-                Text("Нажмите чтобы скопировать", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(0.6f))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Завершить встречу",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
             }
         }
-
-        Spacer(Modifier.weight(1f))
-
-        // Pulsing dot
-        Box(
-            modifier = Modifier.size(100.dp).scale(scale)
-                .clip(CircleShape).background(Color(0xFFE53935)),
-            contentAlignment = Alignment.Center
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(Modifier.size(38.dp).clip(CircleShape).background(Color.White))
-        }
+            item { Spacer(Modifier.height(4.dp)) }
 
-        Spacer(Modifier.height(16.dp))
+            // Ам Ням прыгает
+            item {
+                AmNyam(
+                    modifier = Modifier
+                        .size(200.dp)
+                        .graphicsLayer { translationY = jumpOffset },
+                    eyeLookX = eyeLookX,
+                    mouthOpenFraction = mouthOpen
+                )
+            }
 
-        Text(
-            formatTime(state.seconds),
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text("Идёт запись", color = Color(0xFFE53935), style = MaterialTheme.typography.bodyLarge)
+            // Таймер
+            item {
+                Text(
+                    formatTime(state.seconds),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Идёт запись",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RecRed,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
 
-        Spacer(Modifier.height(24.dp))
-
-        // Participants
-        if (state.participants.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Участники (${state.participants.size})",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                    state.participants.forEach {
-                        Text("• $it", style = MaterialTheme.typography.bodySmall)
+            // Код для участников
+            item {
+                Card(
+                    onClick = onCopy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(
+                        Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "Код для участников",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            code,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 5.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            "Нажмите чтобы скопировать",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+
+            // Блок «Уже поймал»
+            if (state.transcriptLines.isNotEmpty()) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Уже поймал",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("🎯", fontSize = 18.sp)
+                    }
+                }
+                items(state.transcriptLines.reversed()) { line ->
+                    CaughtCard(line)
+                }
+            }
+
+            item { Spacer(Modifier.height(8.dp)) }
         }
+    }
+}
 
-        Spacer(Modifier.weight(1f))
+// ── Анализ после записи ───────────────────────────────────────────────────────
 
-        Button(
-            onClick = onStop,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
-        ) {
-            Box(Modifier.size(18.dp).background(Color.White, RoundedCornerShape(3.dp)))
-            Spacer(Modifier.width(10.dp))
-            Text("Завершить встречу", style = MaterialTheme.typography.titleMedium)
+@Composable
+private fun UploadingLayout() {
+    Box(Modifier.fillMaxSize(), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            AmNyam(
+                modifier = Modifier.size(180.dp),
+                mouthOpenFraction = 0.6f
+            )
+            Spacer(Modifier.height(20.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.size(40.dp),
+                color = Color(0xFF7DD444)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Ам Ням переваривает встречу...",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Извлекаем задачи и решения",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF4A6330)
+            )
+        }
+    }
+}
+
+// ── REC-статусбар ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun RecStatusBar(seconds: Long) {
+    val pulse = rememberInfiniteTransition(label = "rec_dot")
+    val dotAlpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue  = 1f,
+        animationSpec = infiniteRepeatable(tween(550), RepeatMode.Reverse),
+        label = "dot"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(RecRed)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = dotAlpha))
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "REC  ${formatTime(seconds)}",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge
+        )
+    }
+}
+
+// ── Карточка транскрипта ──────────────────────────────────────────────────────
+
+@Composable
+private fun CaughtCard(line: TranscriptLine) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        shape = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                line.speaker,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                line.text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

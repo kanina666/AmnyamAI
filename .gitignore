@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+*.gradle.kts.lock
+
+# Local properties (SDK path, machine-specific)
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Build outputs
+app/build/
+
+# Секреты и ключи
+*.env
+.env.*
+!.env.example
+google-services.json
+*.jks
+*.keystore
+*.p12
+*.pfx
+secrets.properties

@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.amnyamai.data.model.Meeting
+import com.example.amnyamai.ui.components.AmNyamErrorDialog
 import com.example.amnyamai.ui.viewmodel.JoinUiState
 import com.example.amnyamai.ui.viewmodel.JoinViewModel
 
@@ -90,16 +91,19 @@ fun JoinMeetingScreen(onMeetingEnded: (String) -> Unit, onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
-                        if (state is JoinUiState.Error) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(state.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        }
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = { vm.join(code) },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             enabled = code.isNotBlank()
                         ) { Text("Подключиться") }
+                    }
+
+                    if (state is JoinUiState.Error) {
+                        AmNyamErrorDialog(
+                            message = state.message,
+                            onDismiss = { vm.reset() }
+                        )
                     }
                 }
                 is JoinUiState.Loading -> {
