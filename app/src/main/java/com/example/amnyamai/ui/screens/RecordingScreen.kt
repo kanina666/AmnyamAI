@@ -145,6 +145,15 @@ private fun RecordingLayout(
         // Таймер + REC-индикатор
         RecIndicator(state.seconds)
 
+        if (state.isReconnecting) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Переподключение...",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
         Spacer(Modifier.height(16.dp))
 
         // Гифка
