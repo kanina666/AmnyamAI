@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -46,15 +47,23 @@ class YandexGPTService:
     async def analyze_meeting(self, transcript: str) -> MeetingAnalysis:
         try:
             raw_text = await asyncio.to_thread(self._run_completion, transcript)
-            raw_text = self._extract_json(raw_text)
-            payload = json.loads(raw_text)
+            payload = self._parse_json_payload(raw_text)
             analysis = MeetingAnalysis.model_validate(payload)
-        except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+        except (json.JSONDecodeError, TypeError) as exc:
             logger.exception(
                 "YandexGPT returned invalid analysis JSON: %s",
                 raw_text[:1000] if "raw_text" in locals() else None,
             )
             raise GPTAnalysisError("YandexGPT returned invalid analysis JSON") from exc
+        except ValidationError as exc:
+            logger.exception(
+                "YandexGPT returned invalid analysis schema: errors=%s raw=%s",
+                exc.errors(),
+                raw_text[:1000] if "raw_text" in locals() else None,
+            )
+            raise GPTAnalysisError(
+                "YandexGPT returned invalid analysis format"
+            ) from exc
         return analysis
 
     def _run_completion(self, transcript: str) -> str:
@@ -88,6 +97,19 @@ class YandexGPTService:
         model = self.MODEL_ALIASES.get(model, model)
         return f"gpt://{settings.yandex_effective_folder_id}/{model}"
 
+    @classmethod
+    def _parse_json_payload(cls, text: str) -> dict[str, Any]:
+        cleaned = cls._strip_markdown_fences(text)
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", cleaned):
+            try:
+                payload, _ = decoder.raw_decode(cleaned[match.start() :])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                return payload
+        raise json.JSONDecodeError("No JSON object found", cleaned, 0)
+
     @staticmethod
-    def _extract_json(text: str) -> str:
+    def _strip_markdown_fences(text: str) -> str:
         return re.sub(r"```(?:json)?\s?|```", "", text).strip()

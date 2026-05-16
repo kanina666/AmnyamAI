@@ -1,7 +1,8 @@
 from datetime import datetime
+import re
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.models import MeetingStatus, TaskStatus
 
@@ -97,6 +98,32 @@ class ExtractedTask(BaseModel):
     description: str | None = None
     due_at: datetime | None = None
     confidence: float = Field(ge=0.0, le=1.0, default=0.7)
+
+    @field_validator("speaker_tag", mode="before")
+    @classmethod
+    def normalize_speaker_tag(cls, value: Any) -> Any:
+        if value is None:
+            return "unknown"
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float, str)):
+            text = str(value).strip()
+            return text or "unknown"
+        return value
+
+    @field_validator("due_at", mode="before")
+    @classmethod
+    def normalize_due_at(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            if not text or text.lower() == "null":
+                return None
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+                return f"{text}T09:00:00"
+            return text
+        return value
 
 
 class MeetingAnalysis(BaseModel):
