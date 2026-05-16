@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class TranscriptLine(val speaker: String, val text: String)
 
@@ -25,7 +26,8 @@ sealed class RecordingUiState {
     data class Recording(
         val seconds: Long,
         val participants: List<String>,
-        val transcriptLines: List<TranscriptLine> = emptyList()
+        val transcriptLines: List<TranscriptLine> = emptyList(),
+        val isReconnecting: Boolean = false
     ) : RecordingUiState()
     object Uploading : RecordingUiState()
     data class Error(val message: String) : RecordingUiState()
@@ -75,6 +77,25 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                         _uiState.value = cur.copy(transcriptLines = newLines, participants = speakers)
                     }
                 }
+            },
+            onConnected = {
+                viewModelScope.launch {
+                    val cur = _uiState.value as? RecordingUiState.Recording ?: return@launch
+                    _uiState.value = cur.copy(isReconnecting = false)
+                }
+            },
+            onReconnecting = {
+                viewModelScope.launch {
+                    val cur = _uiState.value as? RecordingUiState.Recording ?: return@launch
+                    _uiState.value = cur.copy(isReconnecting = true)
+                }
+            },
+            onError = { err ->
+                viewModelScope.launch {
+                    _uiState.value = RecordingUiState.Error(
+                        "Потеряно соединение с сервером: ${err.message}"
+                    )
+                }
             }
         ).also { it.connect() }
 
@@ -90,10 +111,13 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         timerJob?.cancel()
         recService?.stopRecording()
         unbind()
-        webSocket?.disconnect()
+        val ws = webSocket
         webSocket = null
         viewModelScope.launch {
-            delay(400L) // let WebSocket CLOSE frame reach server before finishMeeting
+            ws?.let {
+                it.disconnect()
+                withTimeoutOrNull(2000L) { it.awaitClosed() }
+            }
             analyzeAndNavigate()
         }
     }
