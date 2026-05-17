@@ -24,8 +24,41 @@
 - **OkHttp WebSocket** — стриминг аудио на сервер в реальном времени
 - **Android AudioRecord** — захват звука с микрофона (PCM 16-bit, 16 кГц, моно)
 - **Foreground Service** — фоновая запись без прерываний
-- **Google Sign-In SDK** — авторизация через Google
+- **Credential Manager API** + **Google Identity Authorization API** — авторизация через Google
 - **Coil** — загрузка GIF-анимаций
+
+---
+
+## Android — техническая реализация
+
+**Стек:** Kotlin · Jetpack Compose · MVVM · Coroutines · OkHttp · Retrofit
+
+### Авторизация
+
+- Google Sign-In через **Credential Manager API** (современный подход, без deprecated `GoogleSignIn`)
+- Двухшаговый флоу: получение `idToken` + `serverAuthCode` через Google Identity Authorization API
+- Обмен `serverAuthCode` на JWT-токен через собственный бэкенд
+- Локальное хранение токена и профиля в SharedPreferences
+
+### Запись встречи
+
+- **Foreground Service** (`RecordingService`) захватывает аудио с микрофона в фоне — запись не прерывается при сворачивании приложения
+- Параметры аудио: **PCM 16-bit, 16 кГц, моно** — нативный формат Yandex SpeechKit
+- Чанки по **100 мс (3200 байт)** отправляются в реальном времени
+
+### WebSocket стриминг
+
+- Аудиочанки стримятся на бэкенд через **OkHttp WebSocket** во время записи
+- Получение частичных и финальных транскриптов в реальном времени — отображаются на экране во время записи
+- Автоматический реконнект при обрыве соединения (до 3 попыток с экспоненциальной паузой)
+- Корректное завершение: ожидание подтверждения закрытия WS перед вызовом `/finish`
+
+### Архитектура
+
+- **MVVM** — вся бизнес-логика в ViewModel, UI только реагирует на состояния
+- Навигация через **Navigation Compose**
+- HTTP-клиент: Retrofit + OkHttp с interceptor для автоматической подстановки Bearer-токена
+- Все асинхронные операции на **Kotlin Coroutines + Flow**
 
 ### Backend
 - **Python 3.11** + **FastAPI** — REST API и WebSocket
