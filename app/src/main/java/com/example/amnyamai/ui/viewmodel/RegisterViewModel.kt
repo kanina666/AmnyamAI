@@ -216,7 +216,15 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 } else {
                     val errorBody = res.errorBody()?.string()
                     Log.e(TAG, "register: ошибка backend — code=${res.code()}, errorBody=$errorBody")
-                    _registerState.value = RegisterState.Error("Ошибка авторизации: ${res.code()}")
+                    val msg = buildString {
+                        append("Auth error: ")
+                        append(res.code())
+                        if (!errorBody.isNullOrBlank()) {
+                            append("\n")
+                            append(errorBody.take(800))
+                        }
+                    }
+                    _registerState.value = RegisterState.Error(msg)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "register: ошибка сети", e)
