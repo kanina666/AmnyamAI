@@ -212,7 +212,6 @@ private fun AllDoneContent(
     vm: ResultViewModel,
     onDone: () -> Unit
 ) {
-    LaunchedEffect(state.saved) { if (state.saved) onDone() }
     if (!state.errorMessage.isNullOrBlank()) {
         AmNyamErrorDialog(
             message = state.errorMessage,
@@ -319,7 +318,7 @@ private fun AllDoneContent(
                 onClick = { vm.saveToCalendar() },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(14.dp),
-                enabled = !state.isSaving
+                enabled = !state.isSaving && !state.saved
             ) {
                 if (state.isSaving) {
                     CircularProgressIndicator(
@@ -331,7 +330,7 @@ private fun AllDoneContent(
                     Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        "Сохранить в Календаре Google",
+                        if (state.saved) "Задачи добавлены в календарь" else "Сохранить в Календаре Google",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )

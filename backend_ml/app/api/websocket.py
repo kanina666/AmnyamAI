@@ -107,6 +107,7 @@ async def _recognize_and_emit(
 ) -> None:
     seen_results = 0
     seen_final_results = 0
+    last_partial_by_speaker: dict[str, STTResult] = {}
     try:
         client = SpeechKitStreamingClient()
         async for result in client.stream_pcm16(_audio_iterator(audio_queue)):
@@ -122,6 +123,9 @@ async def _recognize_and_emit(
             if result.is_final:
                 seen_final_results += 1
                 await _store_transcript_segment(meeting_id, result)
+                last_partial_by_speaker.pop(result.speaker_tag, None)
+            else:
+                last_partial_by_speaker[result.speaker_tag] = result
 
             if websocket_closed.is_set():
                 continue
@@ -184,6 +188,31 @@ async def _recognize_and_emit(
             reason="speech recognition failed",
         )
     finally:
+        # SpeechKit can sometimes end a stream without producing final events for
+        # the last utterance (for example, when the client stops recording while
+        # still speaking). To avoid losing that content entirely, persist the
+        # latest partial hypotheses as final segments at shutdown.
+        if last_partial_by_speaker:
+            for partial in last_partial_by_speaker.values():
+                try:
+                    await _store_transcript_segment(
+                        meeting_id,
+                        STTResult(
+                            text=partial.text,
+                            speaker_tag=partial.speaker_tag,
+                            is_final=True,
+                            event_type="partial_flush",
+                            start_ms=partial.start_ms,
+                            end_ms=partial.end_ms,
+                        ),
+                    )
+                    seen_final_results += 1
+                except Exception:
+                    logger.exception(
+                        "Failed to flush partial transcript to DB: meeting_id=%s",
+                        meeting_id,
+                    )
+
         if seen_results == 0:
             logger.warning(
                 "SpeechKit produced no transcript events: meeting_id=%s",

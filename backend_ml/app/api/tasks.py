@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import get_current_user_id
 from app.db.models import Meeting, Task, TaskStatus, User
 from app.db.schemas import CalendarSyncResponse, TaskCreate, TaskRead, TaskUpdate
@@ -79,6 +80,17 @@ async def sync_task_to_calendar(
     db: AsyncSession = Depends(get_db),
 ) -> CalendarSyncResponse:
     task = await _get_owned_task(db, task_id, user_id)
+    if settings.demo_mode:
+        event_id = f"demo_event_{task.id}"
+        task.calendar_event_id = event_id
+        task.status = TaskStatus.SYNCED
+        await db.commit()
+        return CalendarSyncResponse(
+            task_id=task.id,
+            calendar_event_id=event_id,
+            status=task.status,
+        )
+
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(

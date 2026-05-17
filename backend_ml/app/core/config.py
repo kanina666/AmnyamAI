@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: AnyHttpUrl | None = None
 
+    # Demo mode: bypass external providers (SpeechKit/YandexGPT/Google Calendar)
+    # and return deterministic stub data for UI demos.
+    demo_mode: bool = False
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def yandex_auth_token(self) -> str | None:
