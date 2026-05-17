@@ -9,6 +9,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.amnyamai.data.local.UserStorage
@@ -138,6 +139,21 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
             } catch (e: GetCredentialCancellationException) {
                 Log.w(TAG, "startGoogleSignIn: пользователь отменил вход или ошибка конфигурации (SHA-1/Client ID)", e)
                 _registerState.value = RegisterState.Error("Вход отменен. Проверьте SHA-1 в консоли Google.")
+            } catch (e: NoCredentialException) {
+                Log.w(TAG, "startGoogleSignIn: no credentials available", e)
+                // Allow user to proceed with manual registration even if Google credentials
+                // are unavailable on this device/emulator.
+                _googlePrefill.value = GooglePrefill(
+                    name = "",
+                    lastName = "",
+                    email = "",
+                    idToken = null,
+                    serverAuthCode = null,
+                )
+                _registerState.value = RegisterState.Error(
+                    "Нет доступных учетных данных Google на устройстве. " +
+                        "Проверьте, что на устройстве добавлен аккаунт Google и обновлены Google Play services."
+                )
             } catch (e: GetCredentialException) {
                 Log.e(TAG, "startGoogleSignIn: GetCredentialException — type=${e.type}", e)
                 _registerState.value = RegisterState.Error("Ошибка входа через Google: ${e.message}")
