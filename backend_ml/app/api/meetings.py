@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,6 +95,32 @@ async def get_meeting(
     db: AsyncSession = Depends(get_db),
 ) -> Meeting:
     return await _get_accessible_meeting(db, meeting_id, user_id)
+
+
+@router.delete("/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meeting(
+    meeting_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    meeting = await _get_accessible_meeting(db, meeting_id, user_id)
+    if meeting.owner_id == user_id:
+        await db.delete(meeting)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # Not the owner: remove user's participation (hide from their history).
+    result = await db.execute(
+        select(MeetingParticipant).where(
+            MeetingParticipant.meeting_id == meeting_id,
+            MeetingParticipant.user_id == user_id,
+        )
+    )
+    participation = result.scalar_one_or_none()
+    if participation is not None:
+        await db.delete(participation)
+        await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{meeting_id}/transcript", response_model=list[TranscriptSegmentRead])
