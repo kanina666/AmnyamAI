@@ -9,7 +9,13 @@ import com.example.amnyamai.data.model.Task
 import com.example.amnyamai.data.remote.MeetingCreateRequest
 import com.example.amnyamai.data.remote.RetrofitClient
 import com.example.amnyamai.data.remote.TaskUpdateRequest
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private const val TAG = "MeetingRepo"
 
@@ -54,9 +60,9 @@ class MeetingRepository(context: Context) {
                     Task(
                         id = dto.id,
                         title = dto.title,
-                        description = dto.description ?: "",
+                        description = normalizeDescription(dto.description),
                         assignee = dto.speaker_tag,
-                        deadline = dto.due_at,
+                        deadline = formatDueAt(dto.due_at),
                         meetingId = meetingId
                     )
                 }
@@ -85,9 +91,9 @@ class MeetingRepository(context: Context) {
                         Task(
                             id = dto.id,
                             title = dto.title,
-                            description = dto.description ?: "",
+                            description = normalizeDescription(dto.description),
                             assignee = dto.speaker_tag,
-                            deadline = dto.due_at,
+                            deadline = formatDueAt(dto.due_at),
                             meetingId = meetingId
                         )
                     }
@@ -141,5 +147,44 @@ class MeetingRepository(context: Context) {
                 Result.success(list)
             } else Result.failure(Exception("Ошибка загрузки истории: ${res.code()}"))
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    private fun normalizeDescription(value: String?): String {
+        val text = value?.trim().orEmpty()
+        if (text.isBlank()) return ""
+        if (text.equals("null", ignoreCase = true)) return ""
+        if (text.equals("none", ignoreCase = true)) return ""
+        return text
+    }
+
+    private fun formatDueAt(value: String?): String? {
+        val text = value?.trim().orEmpty()
+        if (text.isBlank()) return null
+        if (text.equals("null", ignoreCase = true)) return null
+        if (text.equals("none", ignoreCase = true)) return null
+
+        val zone = ZoneId.systemDefault()
+        val formatter = DateTimeFormatter.ofPattern("d MMMM yyyy, HH:mm", Locale("ru"))
+        val dateOnlyFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru"))
+
+        // Support a few common formats we might get from backend/LLM.
+        return try {
+            OffsetDateTime.parse(text).atZoneSameInstant(zone).format(formatter)
+        } catch (_: Exception) {
+            try {
+                Instant.parse(text).atZone(zone).format(formatter)
+            } catch (_: Exception) {
+                try {
+                    LocalDateTime.parse(text).atZone(zone).format(formatter)
+                } catch (_: Exception) {
+                    try {
+                        LocalDate.parse(text).format(dateOnlyFormatter)
+                    } catch (_: Exception) {
+                        // If we can't parse, show the raw string (but at least avoid "null").
+                        text
+                    }
+                }
+            }
+        }
     }
 }
