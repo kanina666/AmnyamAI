@@ -1,10 +1,13 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 import grpc
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -50,10 +53,20 @@ class SpeechKitStreamingClient:
                 request_iterator(),
                 metadata=metadata,
             )
-            async for response in responses:
-                result = self._parse_response(response)
-                if result is not None:
-                    yield result
+            try:
+                async for response in responses:
+                    event_type = response.WhichOneof("Event")
+                    logger.debug("SpeechKit response event_type=%s", event_type)
+                    result = self._parse_response(response)
+                    if result is not None:
+                        yield result
+            except grpc.aio.AioRpcError as exc:
+                logger.exception(
+                    "SpeechKit gRPC request failed: code=%s details=%s",
+                    exc.code(),
+                    exc.details(),
+                )
+                raise
 
     @staticmethod
     def _import_stt_modules() -> tuple[Any, Any]:
@@ -109,7 +122,13 @@ class SpeechKitStreamingClient:
         api_key = settings.yandex_cloud_api_key or settings.yandex_api_key
         if api_key:
             return (("authorization", f"Api-Key {api_key}"),)
-        return (("authorization", f"Bearer {settings.yandex_iam_token}"),)
+        metadata = [("authorization", f"Bearer {settings.yandex_iam_token}")]
+        folder_id = settings.yandex_cloud_folder_id
+        if not folder_id and settings.yandex_folder_id != "replace-me":
+            folder_id = settings.yandex_folder_id
+        if folder_id:
+            metadata.append(("x-folder-id", folder_id))
+        return tuple(metadata)
 
     @staticmethod
     def _parse_response(response: Any) -> STTResult | None:

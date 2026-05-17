@@ -118,71 +118,68 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item { Spacer(Modifier.height(16.dp)) }
+            item { Spacer(Modifier.height(8.dp)) }
 
-            // Гифка
-            item {
-                AmNyamGif(
-                    asset = "amnyam_idle.gif",
-                    modifier = Modifier.size(260.dp)
-                )
-            }
-
-            // Приветствие
+            // Гифка + кнопки
             item {
                 val user = vm.currentUser
-                Text(
-                    if (user != null) "Привет, ${user.name}!" else "Привет!",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Что записываем сегодня?",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-            }
-
-            // Кнопка «Организовать встречу»
-            item {
-                Button(
-                    onClick = { showTitleDialog = true },
-                    modifier = Modifier.fillMaxWidth().height(64.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    enabled = uiState !is HomeUiState.Loading
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (uiState is HomeUiState.Loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    } else {
-                        Icon(Icons.Default.Mic, null, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(12.dp))
+                    if (user != null) {
                         Text(
-                            "Организовать встречу",
-                            style = MaterialTheme.typography.titleMedium,
+                            "Привет, ${user.name}!",
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(Modifier.height(8.dp))
                     }
-                }
-            }
 
-            // Кнопка «Подключиться по коду»
-            item {
-                OutlinedButton(
-                    onClick = onJoinMeeting,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.Link, null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Подключиться по коду",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                    AmNyamGif(
+                        asset = "amnyam_idle.gif",
+                        modifier = Modifier.size(280.dp)
                     )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Button(
+                        onClick = { showTitleDialog = true },
+                        modifier = Modifier.fillMaxWidth().height(64.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        enabled = uiState !is HomeUiState.Loading
+                    ) {
+                        if (uiState is HomeUiState.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Icon(Icons.Default.Mic, null, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Организовать встречу",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = onJoinMeeting,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Default.Link, null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Подключиться по коду",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
 
@@ -237,19 +234,23 @@ private fun RecentMeetingCard(meeting: Meeting) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    meeting.title.ifBlank { "Без названия" },
+                    text = meeting.title.ifBlank { "Без названия" },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    dateStr,
+                    text = dateStr,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.primary)
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
@@ -270,7 +271,11 @@ private fun MeetingTitleDialog(onDismiss: () -> Unit, onStart: (String) -> Unit)
             )
         },
         confirmButton = {
-            TextButton(onClick = { onStart(title.ifBlank { "Встреча" }) }) { Text("Начать") }
+            TextButton(
+                onClick = { onStart(title.ifBlank { "Встреча" }) }
+            ) {
+                Text("Начать")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )

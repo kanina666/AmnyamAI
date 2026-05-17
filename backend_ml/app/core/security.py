@@ -75,16 +75,22 @@ def build_google_oauth_url(state: str) -> str:
     return f"{GOOGLE_AUTH_URL}?{query}"
 
 
-async def exchange_google_code(code: str) -> dict[str, Any]:
+async def exchange_google_code(
+    code: str,
+    redirect_uri: str | None = None,
+) -> dict[str, Any]:
     if (
         not settings.google_client_id
         or not settings.google_client_secret
-        or not settings.google_redirect_uri
+        or (redirect_uri is None and not settings.google_redirect_uri)
     ):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Google OAuth is not configured",
         )
+    token_redirect_uri = (
+        str(settings.google_redirect_uri) if redirect_uri is None else redirect_uri
+    )
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             GOOGLE_TOKEN_URL,
@@ -92,7 +98,7 @@ async def exchange_google_code(code: str) -> dict[str, Any]:
                 "code": code,
                 "client_id": settings.google_client_id,
                 "client_secret": settings.google_client_secret,
-                "redirect_uri": str(settings.google_redirect_uri),
+                "redirect_uri": token_redirect_uri,
                 "grant_type": "authorization_code",
             },
         )

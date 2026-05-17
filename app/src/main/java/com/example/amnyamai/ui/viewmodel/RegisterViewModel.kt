@@ -1,15 +1,34 @@
 package com.example.amnyamai.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.util.Log
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.amnyamai.data.local.UserStorage
 import com.example.amnyamai.data.model.User
 import com.example.amnyamai.data.remote.RetrofitClient
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.example.amnyamai.utils.GoogleConfig
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+private const val TAG = "GoogleAuth"
 
 sealed class RegisterState {
     object Idle : RegisterState()
@@ -33,7 +52,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         val name: String,
         val lastName: String,
         val email: String,
-        val googleId: String,
         val idToken: String?,
         val serverAuthCode: String?
     )
@@ -41,32 +59,118 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
     private val _googlePrefill = MutableStateFlow<GooglePrefill?>(null)
     val googlePrefill: StateFlow<GooglePrefill?> = _googlePrefill
 
-    fun onGoogleSignInSuccess(account: GoogleSignInAccount) {
-        _googlePrefill.value = GooglePrefill(
-            name = account.givenName ?: "",
-            lastName = account.familyName ?: "",
-            email = account.email ?: "",
-            googleId = account.id ?: "",
-            idToken = account.idToken,
-            serverAuthCode = account.serverAuthCode
-        )
+    private var pendingPrefill: GooglePrefill? = null
+
+    // ── Шаг 1: Credential Manager → idToken + профиль ────────────────────────
+
+    fun startGoogleSignIn(
+        context: Context,
+        authLauncher: ActivityResultLauncher<IntentSenderRequest>
+    ) {
+        Log.d(TAG, "startGoogleSignIn: старт")
+        _registerState.value = RegisterState.Loading
+        viewModelScope.launch {
+            try {
+                // Шаг 1 — Credential Manager
+                val option = GetSignInWithGoogleOption.Builder(GoogleConfig.WEB_CLIENT_ID).build()
+                val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+
+                Log.d(TAG, "startGoogleSignIn: запрашиваем credential у CredentialManager")
+                val credResult = CredentialManager.create(context).getCredential(context, request)
+
+                Log.d(TAG, "startGoogleSignIn: credential получен, type=${credResult.credential.type}")
+                val googleCred = GoogleIdTokenCredential.createFrom(credResult.credential.data)
+
+                Log.d(TAG, "startGoogleSignIn: givenName=${googleCred.givenName}, familyName=${googleCred.familyName}, email=${googleCred.id}")
+                Log.d(TAG, "startGoogleSignIn: idToken=${if (googleCred.idToken != null) "получен (${googleCred.idToken.length} chars)" else "NULL"}")
+
+                val prefill = GooglePrefill(
+                    name = googleCred.givenName ?: "",
+                    lastName = googleCred.familyName ?: "",
+                    email = googleCred.id,
+                    idToken = googleCred.idToken,
+                    serverAuthCode = null
+                )
+                pendingPrefill = prefill
+
+                // Шаг 2 — Authorization API для serverAuthCode
+                Log.d(TAG, "startGoogleSignIn: запрашиваем serverAuthCode через Authorization API")
+                val authRequest = AuthorizationRequest.builder()
+                    .requestOfflineAccess(GoogleConfig.WEB_CLIENT_ID)
+                    .setRequestedScopes(listOf(Scope("email"), Scope("profile")))
+                    .build()
+
+                val authResult = Identity.getAuthorizationClient(context)
+                    .authorize(authRequest)
+                    .awaitTask()
+
+                Log.d(TAG, "startGoogleSignIn: Authorization API ответ — serverAuthCode=${if (authResult.serverAuthCode != null) "получен" else "null"}, hasResolution=${authResult.hasResolution()}")
+
+                when {
+                    authResult.serverAuthCode != null -> {
+                        Log.d(TAG, "startGoogleSignIn: serverAuthCode получен сразу, показываем форму")
+                        _googlePrefill.value = prefill.copy(serverAuthCode = authResult.serverAuthCode)
+                        _registerState.value = RegisterState.Idle
+                    }
+                    authResult.hasResolution() -> {
+                        Log.d(TAG, "startGoogleSignIn: нужен IntentSender — запускаем диалог согласия")
+                        authLauncher.launch(
+                            IntentSenderRequest.Builder(authResult.pendingIntent!!.intentSender).build()
+                        )
+                        _registerState.value = RegisterState.Idle
+                    }
+                    else -> {
+                        Log.w(TAG, "startGoogleSignIn: serverAuthCode недоступен и нет resolution — показываем форму без него")
+                        _googlePrefill.value = prefill
+                        _registerState.value = RegisterState.Idle
+                    }
+                }
+
+            } catch (e: GetCredentialCancellationException) {
+                Log.d(TAG, "startGoogleSignIn: пользователь отменил вход")
+                _registerState.value = RegisterState.Idle
+            } catch (e: GetCredentialException) {
+                Log.e(TAG, "startGoogleSignIn: GetCredentialException — type=${e.type}", e)
+                _registerState.value = RegisterState.Error("Ошибка входа через Google: ${e.message}")
+            } catch (e: Exception) {
+                Log.e(TAG, "startGoogleSignIn: неожиданная ошибка", e)
+                _registerState.value = RegisterState.Error("Ошибка: ${e.message}")
+            }
+        }
     }
+
+    // ── Шаг 2b: результат IntentSender (пользователь дал согласие) ───────────
+
+    fun onAuthorizationResult(authResult: AuthorizationResult) {
+        val prefill = pendingPrefill
+        Log.d(TAG, "onAuthorizationResult: serverAuthCode=${if (authResult.serverAuthCode != null) "получен" else "null"}, pendingPrefill=${if (prefill != null) "есть" else "null"}")
+        if (prefill == null) {
+            Log.w(TAG, "onAuthorizationResult: pendingPrefill пустой, игнорируем")
+            return
+        }
+        _googlePrefill.value = prefill.copy(serverAuthCode = authResult.serverAuthCode)
+    }
+
+    // ── Регистрация по форме ──────────────────────────────────────────────────
 
     fun register(name: String, lastName: String, login: String) {
         val google = _googlePrefill.value
+        Log.d(TAG, "register: name='$name', lastName='$lastName', login='$login'")
+        Log.d(TAG, "register: serverAuthCode=${if (google?.serverAuthCode != null) "есть" else "нет — только локальная запись"}")
 
         if (google?.serverAuthCode == null) {
-            // Нет Google-входа — сохраняем локально, без JWT
+            Log.d(TAG, "register: сохраняем пользователя локально (без backend)")
             storage.saveUser(
                 User(
                     name = name.trim(),
                     lastName = lastName.trim(),
                     login = login.trim(),
                     isCalendarConnected = false,
-                    googleId = google?.googleId,
+                    googleId = null,
                     googleIdToken = google?.idToken
                 )
             )
+            Log.d(TAG, "register: локальный пользователь сохранён")
             _registered.value = true
             return
         }
@@ -74,9 +178,13 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         _registerState.value = RegisterState.Loading
         viewModelScope.launch {
             try {
+                Log.d(TAG, "register: вызываем backend /api/v1/auth/google/callback")
                 val res = RetrofitClient.apiService.googleCallback(google.serverAuthCode)
+                Log.d(TAG, "register: ответ backend — code=${res.code()}, success=${res.isSuccessful}")
+
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
+                    Log.d(TAG, "register: токен получен, backendId=${body.user.id}")
                     storage.saveToken(body.access_token)
                     RetrofitClient.setToken(body.access_token)
                     storage.saveUser(
@@ -85,20 +193,29 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                             lastName = lastName.trim(),
                             login = login.trim(),
                             isCalendarConnected = true,
-                            googleId = google.googleId,
                             googleIdToken = google.idToken,
-                            googleServerAuthCode = google.serverAuthCode,
                             backendId = body.user.id
                         )
                     )
+                    Log.d(TAG, "register: пользователь сохранён с isCalendarConnected=true")
                     _registerState.value = RegisterState.Idle
                     _registered.value = true
                 } else {
+                    val errorBody = res.errorBody()?.string()
+                    Log.e(TAG, "register: ошибка backend — code=${res.code()}, errorBody=$errorBody")
                     _registerState.value = RegisterState.Error("Ошибка авторизации: ${res.code()}")
                 }
             } catch (e: Exception) {
-                _registerState.value = RegisterState.Error(e.message ?: "Ошибка подключения к серверу")
+                Log.e(TAG, "register: ошибка сети", e)
+                _registerState.value = RegisterState.Error(e.message ?: "Ошибка подключения")
             }
         }
     }
 }
+
+private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitTask(): T =
+    suspendCancellableCoroutine { cont ->
+        addOnSuccessListener { cont.resume(it) }
+        addOnFailureListener { cont.resumeWithException(it) }
+        addOnCanceledListener { cont.cancel() }
+    }

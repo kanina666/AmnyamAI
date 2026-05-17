@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class TranscriptLine(val speaker: String, val text: String)
 
@@ -25,7 +26,8 @@ sealed class RecordingUiState {
     data class Recording(
         val seconds: Long,
         val participants: List<String>,
-        val transcriptLines: List<TranscriptLine> = emptyList()
+        val transcriptLines: List<TranscriptLine> = emptyList(),
+        val isReconnecting: Boolean = false
     ) : RecordingUiState()
     object Uploading : RecordingUiState()
     data class Error(val message: String) : RecordingUiState()
@@ -47,13 +49,20 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var meetingId = ""
     private var isBound = false
     private var webSocket: MeetingWebSocket? = null
+    @Volatile private var isWebSocketReady = false
+
+    private fun tryStartRecording() {
+        if (isWebSocketReady && recService != null && recService?.isRecording == false) {
+            recService?.startRecording()
+            startTimer()
+        }
+    }
 
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(n: ComponentName?, b: IBinder?) {
             recService = (b as RecordingService.RecordingBinder).getService()
             recService?.onChunkAvailable = { chunk -> webSocket?.sendAudioChunk(chunk) }
-            recService?.startRecording()
-            startTimer()
+            tryStartRecording()
         }
         override fun onServiceDisconnected(n: ComponentName?) { recService = null; isBound = false }
     }
@@ -75,6 +84,27 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                         _uiState.value = cur.copy(transcriptLines = newLines, participants = speakers)
                     }
                 }
+            },
+            onConnected = {
+                isWebSocketReady = true
+                tryStartRecording()
+                viewModelScope.launch {
+                    val cur = _uiState.value as? RecordingUiState.Recording ?: return@launch
+                    _uiState.value = cur.copy(isReconnecting = false)
+                }
+            },
+            onReconnecting = {
+                viewModelScope.launch {
+                    val cur = _uiState.value as? RecordingUiState.Recording ?: return@launch
+                    _uiState.value = cur.copy(isReconnecting = true)
+                }
+            },
+            onError = { err ->
+                viewModelScope.launch {
+                    _uiState.value = RecordingUiState.Error(
+                        "Потеряно соединение с сервером: ${err.message}"
+                    )
+                }
             }
         ).also { it.connect() }
 
@@ -87,13 +117,18 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun reset() { _uiState.value = RecordingUiState.Idle }
 
     fun stopAndUpload() {
+        isWebSocketReady = false
         timerJob?.cancel()
         recService?.stopRecording()
         unbind()
-        webSocket?.disconnect()
+        val ws = webSocket
         webSocket = null
         viewModelScope.launch {
-            delay(400L) // let WebSocket CLOSE frame reach server before finishMeeting
+            ws?.let {
+                it.disconnect()
+                withTimeoutOrNull(2000L) { it.awaitClosed() }
+            }
+            delay(3000L)
             analyzeAndNavigate()
         }
     }
