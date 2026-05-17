@@ -70,7 +70,10 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         _registerState.value = RegisterState.Loading
         viewModelScope.launch {
             try {
-                val option = GetSignInWithGoogleOption.Builder(GoogleConfig.WEB_CLIENT_ID).build()
+                val option = GetSignInWithGoogleOption.Builder(GoogleConfig.WEB_CLIENT_ID)
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .build()
                 val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
 
                 Log.d(TAG, "startGoogleSignIn: запрашиваем credential у CredentialManager")
