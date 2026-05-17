@@ -19,7 +19,7 @@ import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -70,7 +70,8 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         _registerState.value = RegisterState.Loading
         viewModelScope.launch {
             try {
-                val option = GetSignInWithGoogleOption.Builder(GoogleConfig.WEB_CLIENT_ID)
+                val option = GetGoogleIdOption.Builder()
+                    .setServerClientId(GoogleConfig.WEB_CLIENT_ID)
                     .setFilterByAuthorizedAccounts(false)
                     .setAutoSelectEnabled(false)
                     .build()
