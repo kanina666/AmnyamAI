@@ -81,7 +81,7 @@ fun RecordingScreen(meetingId: String, code: String, onDone: (String) -> Unit) {
         is RecordingUiState.Error -> AmNyamErrorDialog(
             message = state.message,
             onDismiss = { vm.reset() },
-            onRetry = { vm.stopAndUpload() }
+            onRetry = { vm.reset() }
         )
     }
 }

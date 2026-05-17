@@ -49,3 +49,4 @@ def build_meeting_analysis_prompt(transcript: str, current_date: date | None = N
 
 Извлеки краткое резюме и задачи.
 """
+

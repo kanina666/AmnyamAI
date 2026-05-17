@@ -64,7 +64,7 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                         com.example.amnyamai.data.model.MeetingStatus.FAILED -> {
-                            _uiState.value = ResultUiState.Error("Meeting processing failed")
+                            _uiState.value = ResultUiState.Error("Meeting analysis failed")
                         }
                         com.example.amnyamai.data.model.MeetingStatus.DONE -> {
                             _uiState.value = if (meeting.tasks.isEmpty())

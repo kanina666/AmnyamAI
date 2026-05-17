@@ -68,7 +68,22 @@ class MeetingRepository(context: Context) {
                 }
                 taskCache[meetingId] = tasks
                 Result.success(tasks)
-            } else Result.failure(Exception("Ошибка анализа: ${res.code()}"))
+            } else {
+                val code = res.code()
+                val errBody = res.errorBody()?.string().orEmpty()
+                when (code) {
+                    409 -> {
+                        val lower = errBody.lowercase()
+                        when {
+                            "already being processed" in lower -> Result.failure(Exception("MEETING_PROCESSING"))
+                            "recording failed" in lower -> Result.failure(Exception("MEETING_FAILED"))
+                            else -> Result.failure(Exception("MEETING_CONFLICT $errBody".trim()))
+                        }
+                    }
+                    422 -> Result.failure(Exception("EMPTY_TRANSCRIPT"))
+                    else -> Result.failure(Exception("ANALYSIS_HTTP_$code $errBody".trim()))
+                }
+            }
         } catch (e: Exception) { Result.failure(e) }
     }
 

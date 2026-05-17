@@ -146,8 +146,16 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.value = RecordingUiState.Uploading
         val finishResult = repository.finishMeeting(meetingId)
         val failureMsg = finishResult.exceptionOrNull()?.message
-        if (failureMsg != null && failureMsg.contains("409")) {
+        if (failureMsg == "MEETING_PROCESSING") {
             _navigateToResult.value = meetingId
+            return
+        }
+        if (failureMsg == "MEETING_FAILED") {
+            _uiState.value = RecordingUiState.Error("Meeting recording failed on server.")
+            return
+        }
+        if (failureMsg == "EMPTY_TRANSCRIPT") {
+            _uiState.value = RecordingUiState.Error("Speech was not recognized. Please try again.")
             return
         }
         finishResult.fold(
