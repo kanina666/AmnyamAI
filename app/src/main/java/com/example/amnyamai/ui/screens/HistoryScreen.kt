@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -110,6 +111,10 @@ fun HistoryScreen(onBack: () -> Unit, onOpenMeeting: (meetingId: String) -> Unit
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onOpenMeeting(meeting.id)
+                            },
+                            onDelete = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.deleteMeeting(meeting.id)
                             }
                         )
                     }
@@ -120,7 +125,7 @@ fun HistoryScreen(onBack: () -> Unit, onOpenMeeting: (meetingId: String) -> Unit
 }
 
 @Composable
-private fun MeetingHistoryCard(meeting: Meeting, onClick: () -> Unit) {
+private fun MeetingHistoryCard(meeting: Meeting, onClick: () -> Unit, onDelete: () -> Unit) {
     val dateStr = remember(meeting.createdAt) {
         SimpleDateFormat("d MMMM yyyy, HH:mm", Locale("ru")).format(Date(meeting.createdAt))
     }
@@ -148,6 +153,15 @@ private fun MeetingHistoryCard(meeting: Meeting, onClick: () -> Unit) {
                         dateStr,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Удалить",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

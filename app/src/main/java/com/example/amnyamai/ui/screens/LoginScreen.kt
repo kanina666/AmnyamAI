@@ -17,7 +17,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -76,14 +75,15 @@ fun LoginScreen(
     var name by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
     var login by remember { mutableStateOf("") }
-    var showForm by remember { mutableStateOf(false) }
+
+    // Форму показываем только если получили данные от Google, но сервер требует регистрации
+    val showForm = prefill != null
 
     LaunchedEffect(prefill) {
         prefill?.let {
             name = it.name
             lastName = it.lastName
             login = it.email.substringBefore("@")
-            showForm = true
         }
     }
     LaunchedEffect(registered) { if (registered) onLoggedIn() }
@@ -120,36 +120,39 @@ fun LoginScreen(
         Spacer(Modifier.height(40.dp))
 
         if (showForm) {
-            val isGoogleRegistration = prefill != null
-            if (isGoogleRegistration) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Имя") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
-                )
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = lastName,
-                    onValueChange = { lastName = it },
-                    label = { Text("Фамилия") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
-                )
-                Spacer(Modifier.height(12.dp))
-            }
+            Text(
+                "Почти готово! Проверьте данные:",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Имя") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = lastName,
+                onValueChange = { lastName = it },
+                label = { Text("Фамилия") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+            )
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = login,
                 onValueChange = { login = it },
-                label = { Text("Логин") },
+                label = { Text("Логин (никнейм)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
             Spacer(Modifier.height(20.dp))
-            val canSubmit = isGoogleRegistration && name.isNotBlank() && lastName.isNotBlank() && login.isNotBlank()
+            
+            val canSubmit = name.isNotBlank() && lastName.isNotBlank() && login.isNotBlank()
             
             Button(
                 onClick = { vm.register(name, lastName, login) },
@@ -166,18 +169,11 @@ fun LoginScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text(if (isGoogleRegistration) "Завершить регистрацию" else "Нужен вход через Google", fontWeight = FontWeight.Bold)
+                    Text("Завершить регистрацию", fontWeight = FontWeight.Bold)
                 }
             }
-            if (state is RegisterState.Error) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    (state as RegisterState.Error).message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
         } else {
+            // Главная универсальная кнопка
             Button(
                 onClick = { scope.launch { vm.startGoogleSignIn(ctx, authLauncher) } },
                 modifier = Modifier
@@ -200,27 +196,19 @@ fun LoginScreen(
                         tint = Color.Unspecified
                     )
                     Spacer(Modifier.width(12.dp))
-                    Text("Регистрация через Google", fontWeight = FontWeight.Bold)
+                    Text("Войти через Google", fontWeight = FontWeight.Bold)
                 }
             }
-            if (state is RegisterState.Error) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    (state as RegisterState.Error).message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { showForm = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text("Уже есть аккаунт", fontWeight = FontWeight.SemiBold)
-            }
+        }
+
+        if (state is RegisterState.Error) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                (state as RegisterState.Error).message,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
         }
 
         Spacer(Modifier.height(48.dp))

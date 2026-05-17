@@ -152,14 +152,52 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
 
     fun onAuthorizationResult(authResult: AuthorizationResult) {
         val prefill = pendingPrefill
-        Log.d(TAG, "onAuthorizationResult: serverAuthCode=${if (authResult.serverAuthCode != null) "получен" else "null"}, pendingPrefill=${if (prefill != null) "есть" else "null"}")
-        if (prefill == null) {
-            Log.w(TAG, "onAuthorizationResult: pendingPrefill пустой, игнорируем")
-            _registerState.value = RegisterState.Idle
+        val code = authResult.serverAuthCode
+        Log.d(TAG, "onAuthorizationResult: serverAuthCode=${if (code != null) "получен" else "null"}")
+
+        if (code == null) {
+            onError("Не удалось получить код от Google")
             return
         }
-        _googlePrefill.value = prefill.copy(serverAuthCode = authResult.serverAuthCode)
-        _registerState.value = RegisterState.Idle
+
+        // Пытаемся сразу войти через backend
+        _registerState.value = RegisterState.Loading
+        viewModelScope.launch {
+            try {
+                val res = RetrofitClient.apiService.googleCallback(code)
+                if (res.isSuccessful && res.body() != null) {
+                    val body = res.body()!!
+                    storage.saveToken(body.access_token)
+                    RetrofitClient.setToken(body.access_token)
+                    
+                    // Сохраняем пользователя (если данных нет, используем ID как логин)
+                    storage.saveUser(
+                        User(
+                            name = prefill?.name ?: "User",
+                            lastName = prefill?.lastName ?: "",
+                            login = body.user.id,
+                            isCalendarConnected = true,
+                            backendId = body.user.id
+                        )
+                    )
+                    _registerState.value = RegisterState.Idle
+                    _registered.value = true
+                    } else {
+                        // Если сервер вернул ошибку (например, пользователя надо создать),
+                        // тогда показываем форму регистрации
+                        Log.d(TAG, "onAuthorizationResult: сервер не авторизовал сразу (код ${res.code()}), показываем форму")
+                        _googlePrefill.value = prefill?.copy(serverAuthCode = code) ?: GooglePrefill(
+                            name = "", lastName = "", email = "", serverAuthCode = code, idToken = null
+                        )
+                        _registerState.value = RegisterState.Idle
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "onAuthorizationResult: ошибка связи с сервером", e)
+                // В случае ошибки сети тоже даем шанс заполнить форму или попробовать позже
+                _googlePrefill.value = prefill?.copy(serverAuthCode = code)
+                _registerState.value = RegisterState.Idle
+            }
+        }
     }
 
     fun onAuthCancelled() {
@@ -218,9 +256,12 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                             backendId = body.user.id
                         )
                     )
-                    Log.d(TAG, "register: пользователь сохранён с isCalendarConnected=true")
+                    Log.d(TAG, "register: пользователь сохранён")
                     _registerState.value = RegisterState.Idle
                     _registered.value = true
+                } else if (res.code() == 409) {
+                    Log.w(TAG, "register: 409 Conflict - логин занят")
+                    _registerState.value = RegisterState.Error("Этот логин уже занят. Пожалуйста, придумайте другой.")
                 } else {
                     val errorBody = res.errorBody()?.string()
                     Log.e(TAG, "register: ошибка backend — code=${res.code()}, errorBody=$errorBody")

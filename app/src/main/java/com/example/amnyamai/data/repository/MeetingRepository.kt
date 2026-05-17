@@ -193,6 +193,20 @@ class MeetingRepository(context: Context) {
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    suspend fun deleteMeeting(meetingId: String): Result<Unit> {
+        return try {
+            val res = api.deleteMeeting(meetingId)
+            if (res.isSuccessful) {
+                taskCache.remove(meetingId)
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Ошибка удаления: ${res.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun normalizeDescription(value: String?): String {
         val text = value?.trim().orEmpty()
         if (text.isBlank()) return ""
