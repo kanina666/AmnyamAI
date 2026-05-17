@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.amnyamai.data.local.UserStorage
@@ -50,16 +49,20 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var meetingId = ""
     private var isBound = false
     private var webSocket: MeetingWebSocket? = null
+    @Volatile private var isWebSocketReady = false
+
+    private fun tryStartRecording() {
+        if (isWebSocketReady && recService != null && recService?.isRecording == false) {
+            recService?.startRecording()
+            startTimer()
+        }
+    }
 
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(n: ComponentName?, b: IBinder?) {
             recService = (b as RecordingService.RecordingBinder).getService()
-            recService?.onChunkAvailable = fun(chunk: ByteArray) {
-                Log.d("TAG", "хочу чтобы на меня написили")
-                webSocket?.sendAudioChunk(chunk)
-            }
-            recService?.startRecording()
-            startTimer()
+            recService?.onChunkAvailable = { chunk -> webSocket?.sendAudioChunk(chunk) }
+            tryStartRecording()
         }
         override fun onServiceDisconnected(n: ComponentName?) { recService = null; isBound = false }
     }
@@ -83,6 +86,8 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             },
             onConnected = {
+                isWebSocketReady = true
+                tryStartRecording()
                 viewModelScope.launch {
                     val cur = _uiState.value as? RecordingUiState.Recording ?: return@launch
                     _uiState.value = cur.copy(isReconnecting = false)
@@ -112,6 +117,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun reset() { _uiState.value = RecordingUiState.Idle }
 
     fun stopAndUpload() {
+        isWebSocketReady = false
         timerJob?.cancel()
         recService?.stopRecording()
         unbind()
@@ -122,6 +128,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 it.disconnect()
                 withTimeoutOrNull(2000L) { it.awaitClosed() }
             }
+            delay(3000L)
             analyzeAndNavigate()
         }
     }
