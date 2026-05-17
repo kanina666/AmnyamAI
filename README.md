@@ -284,20 +284,20 @@ Build → Run 'app'
 ## Переменные окружения
 
 | Переменная | Обязательная | Описание |
-|-----------|:---:|---------|
-| `JWT_SECRET_KEY` | ✅ | Секрет для подписи JWT-токенов |
-| `GOOGLE_CLIENT_ID` | ✅ | OAuth Client ID (Web Application) |
-| `GOOGLE_CLIENT_SECRET` | ✅ | OAuth Client Secret |
-| `GOOGLE_REDIRECT_URI` | ✅ | URI редиректа для OAuth |
-| `YANDEX_CLOUD_FOLDER_ID` | ✅ | ID каталога Yandex Cloud |
-| `YANDEX_CLOUD_API_KEY` | ✅ | API-ключ для SpeechKit и YandexGPT |
-| `YANDEX_GPT_MODEL` | — | Модель GPT (по умолчанию `yandexgpt-5.1`) |
-| `YANDEX_GPT_MODEL_VERSION` | — | Версия модели (по умолчанию `pro`) |
-| `YANDEX_GPT_TEMPERATURE` | — | Температура генерации (по умолчанию `0.3`) |
-| `SPEECHKIT_MODEL` | — | Модель STT (по умолчанию `general:rc`) |
-| `SPEECHKIT_LANGUAGE_CODE` | — | Язык распознавания (по умолчанию `ru-RU`) |
-| `DATABASE_URL` | — | Строка подключения к PostgreSQL |
-| `DEBUG` | — | Включить dev-эндпоинты (по умолчанию `true`) |
+|-----------|:------------:|---------|
+| `JWT_SECRET_KEY` |      +       | Секрет для подписи JWT-токенов |
+| `GOOGLE_CLIENT_ID` |      +       | OAuth Client ID (Web Application) |
+| `GOOGLE_CLIENT_SECRET` |      +       | OAuth Client Secret |
+| `GOOGLE_REDIRECT_URI` |      +       | URI редиректа для OAuth |
+| `YANDEX_CLOUD_FOLDER_ID` |      +       | ID каталога Yandex Cloud |
+| `YANDEX_CLOUD_API_KEY` |      +       | API-ключ для SpeechKit и YandexGPT |
+| `YANDEX_GPT_MODEL` |      —       | Модель GPT (по умолчанию `yandexgpt-5.1`) |
+| `YANDEX_GPT_MODEL_VERSION` |      —       | Версия модели (по умолчанию `pro`) |
+| `YANDEX_GPT_TEMPERATURE` |      —       | Температура генерации (по умолчанию `0.3`) |
+| `SPEECHKIT_MODEL` |      —       | Модель STT (по умолчанию `general:rc`) |
+| `SPEECHKIT_LANGUAGE_CODE` |      —       | Язык распознавания (по умолчанию `ru-RU`) |
+| `DATABASE_URL` |      —       | Строка подключения к PostgreSQL |
+| `DEBUG` |      —       | Включить dev-эндпоинты (по умолчанию `true`) |
 
 ---
 
