@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.amnyamai.data.local.UserStorage
@@ -53,7 +54,10 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(n: ComponentName?, b: IBinder?) {
             recService = (b as RecordingService.RecordingBinder).getService()
-            recService?.onChunkAvailable = { chunk -> webSocket?.sendAudioChunk(chunk) }
+            recService?.onChunkAvailable = fun(chunk: ByteArray) {
+                Log.d("TAG", "хочу чтобы на меня написили")
+                webSocket?.sendAudioChunk(chunk)
+            }
             recService?.startRecording()
             startTimer()
         }
