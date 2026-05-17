@@ -94,6 +94,12 @@ async def sync_task_to_calendar(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+    except Exception as exc:
+        # Bubble up provider errors in a readable way for the client.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Google Calendar sync failed: {exc}",
+        ) from exc
     task.calendar_event_id = event_id
     task.status = TaskStatus.SYNCED
     await db.commit()

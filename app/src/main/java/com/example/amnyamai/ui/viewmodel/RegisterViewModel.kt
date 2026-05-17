@@ -98,7 +98,13 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 Log.d(TAG, "startGoogleSignIn: запрашиваем serverAuthCode через Authorization API")
                 val authRequest = AuthorizationRequest.builder()
                     .requestOfflineAccess(GoogleConfig.WEB_CLIENT_ID)
-                    .setRequestedScopes(listOf(Scope("email"), Scope("profile")))
+                    .setRequestedScopes(
+                        listOf(
+                            Scope("email"),
+                            Scope("profile"),
+                            Scope("https://www.googleapis.com/auth/calendar.events"),
+                        )
+                    )
                     .build()
 
                 val authResult = Identity.getAuthorizationClient(context)
