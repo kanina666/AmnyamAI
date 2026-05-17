@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
@@ -48,6 +49,11 @@ class GoogleCalendarService:
         }
         try:
             created = service.events().insert(calendarId="primary", body=event).execute()
+        except RefreshError as exc:
+            # Refresh token exists, but is invalid for requested access (scope mismatch, revoked, etc).
+            raise CalendarSyncError(
+                "Google Calendar authorization is invalid. Re-login and grant Calendar access."
+            ) from exc
         except HttpError as exc:
             # Typical case: user granted auth, but without Calendar scopes.
             # Bubble up a readable message; the API layer will convert it to HTTP.

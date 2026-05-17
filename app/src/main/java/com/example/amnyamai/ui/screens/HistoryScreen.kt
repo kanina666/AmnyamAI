@@ -35,6 +35,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,10 +50,11 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(onBack: () -> Unit) {
+fun HistoryScreen(onBack: () -> Unit, onOpenMeeting: (meetingId: String) -> Unit) {
     val vm: HistoryViewModel = viewModel()
     val meetings by vm.meetings.collectAsState()
     val isLoading by vm.isLoading.collectAsState()
+    val haptics = LocalHapticFeedback.current
 
     Scaffold(
         topBar = {
@@ -102,7 +105,13 @@ fun HistoryScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     itemsIndexed(meetings) { _, meeting ->
-                        MeetingHistoryCard(meeting)
+                        MeetingHistoryCard(
+                            meeting = meeting,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onOpenMeeting(meeting.id)
+                            }
+                        )
                     }
                 }
             }
@@ -111,12 +120,13 @@ fun HistoryScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun MeetingHistoryCard(meeting: Meeting) {
+private fun MeetingHistoryCard(meeting: Meeting, onClick: () -> Unit) {
     val dateStr = remember(meeting.createdAt) {
         SimpleDateFormat("d MMMM yyyy, HH:mm", Locale("ru")).format(Date(meeting.createdAt))
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface

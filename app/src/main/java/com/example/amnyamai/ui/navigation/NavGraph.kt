@@ -88,7 +88,12 @@ fun NavGraph() {
         }
 
         composable("history") {
-            HistoryScreen(onBack = { nav.popBackStack() })
+            HistoryScreen(
+                onBack = { nav.popBackStack() },
+                onOpenMeeting = { meetingId ->
+                    nav.navigate("result/${Uri.encode(meetingId)}")
+                }
+            )
         }
     }
 }

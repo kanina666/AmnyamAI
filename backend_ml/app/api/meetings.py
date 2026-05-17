@@ -118,6 +118,17 @@ async def finish_meeting(
     db: AsyncSession = Depends(get_db),
 ) -> list[Task]:
     meeting = await _get_owned_meeting(db, meeting_id, user_id)
+    if meeting.status == MeetingStatus.COMPLETED:
+        # Idempotency: avoid running analysis twice and duplicating tasks.
+        result = await db.execute(
+            select(Task).where(Task.meeting_id == meeting_id).order_by(Task.created_at)
+        )
+        return list(result.scalars().all())
+    if meeting.status == MeetingStatus.PROCESSING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Meeting is already being processed",
+        )
     if meeting.status == MeetingStatus.FAILED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

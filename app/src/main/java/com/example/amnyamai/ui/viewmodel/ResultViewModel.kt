@@ -59,7 +59,7 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
 
     fun acceptTask(task: Task) {
         val state = _uiState.value as? ResultUiState.Ready ?: return
-        val newAccepted = state.acceptedTasks + task
+        val newAccepted = (state.acceptedTasks + task).distinctBy { it.id }
         val next = state.currentIndex + 1
         _uiState.value = if (next >= state.tasks.size)
             ResultUiState.AllDone(newAccepted, state.summary)
