@@ -46,9 +46,16 @@ class YandexGPTService:
 
     async def analyze_meeting(self, transcript: str) -> MeetingAnalysis:
         try:
-            raw_text = await asyncio.to_thread(self._run_completion, transcript)
+            # Avoid leaving meetings stuck in PROCESSING forever if provider hangs.
+            raw_text = await asyncio.wait_for(
+                asyncio.to_thread(self._run_completion, transcript),
+                timeout=90,
+            )
             payload = self._parse_json_payload(raw_text)
             analysis = MeetingAnalysis.model_validate(payload)
+        except asyncio.TimeoutError as exc:
+            logger.exception("YandexGPT request timed out")
+            raise GPTAnalysisError("YandexGPT request timed out") from exc
         except (json.JSONDecodeError, TypeError) as exc:
             logger.exception(
                 "YandexGPT returned invalid analysis JSON: %s",

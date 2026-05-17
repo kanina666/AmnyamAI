@@ -35,9 +35,11 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<ResultUiState> = _uiState
 
     private var loadedId = ""
+    private var pollAttempts = 0
 
     fun reload(meetingId: String) {
         loadedId = ""
+        pollAttempts = 0
         load(meetingId)
     }
 
@@ -52,6 +54,11 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
                         com.example.amnyamai.data.model.MeetingStatus.ACTIVE -> {
                             _uiState.value = ResultUiState.Loading
                             viewModelScope.launch {
+                                pollAttempts++
+                                if (pollAttempts > 40) {
+                                    _uiState.value = ResultUiState.Error("Analysis is taking too long. Please retry.")
+                                    return@launch
+                                }
                                 kotlinx.coroutines.delay(1500L)
                                 reload(meetingId)
                             }
