@@ -24,7 +24,8 @@ from app.services.meeting_access import (
     find_meeting_by_identifier,
     get_accessible_meeting,
 )
-from app.services.meeting_analysis import MeetingAnalysisService
+from app.services.gpt_service import GPTAnalysisError
+from app.services.meeting_analysis import EmptyTranscriptError, MeetingAnalysisService
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
@@ -122,7 +123,22 @@ async def finish_meeting(
     await db.commit()
 
     service = MeetingAnalysisService()
-    await service.analyze_and_store(db, meeting)
+    try:
+        await service.analyze_and_store(db, meeting)
+    except EmptyTranscriptError as exc:
+        meeting.status = MeetingStatus.FAILED
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except GPTAnalysisError as exc:
+        meeting.status = MeetingStatus.FAILED
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
 
     meeting.status = MeetingStatus.COMPLETED
     await db.commit()

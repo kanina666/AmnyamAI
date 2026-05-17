@@ -1,9 +1,17 @@
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Meeting, Task, TranscriptSegment
 from app.db.schemas import MeetingAnalysis
-from app.services.gpt_service import YandexGPTService
+from app.services.gpt_service import GPTAnalysisError, YandexGPTService
+
+logger = logging.getLogger(__name__)
+
+
+class EmptyTranscriptError(RuntimeError):
+    pass
 
 
 class MeetingAnalysisService:
@@ -16,9 +24,24 @@ class MeetingAnalysisService:
         meeting: Meeting,
     ) -> MeetingAnalysis:
         transcript = await self._load_transcript(db, meeting.id)
-        analysis = await self.gpt_service.analyze_meeting(transcript)
+        if not transcript.strip():
+            logger.warning(
+                "Skipping meeting analysis because no final transcript was "
+                "recognized: meeting_id=%s",
+                meeting.id,
+            )
+            raise EmptyTranscriptError(
+                "SpeechKit did not recognize any speech for this meeting"
+            )
 
-        meeting.summary = analysis.summary
+        analysis = await self.gpt_service.analyze_meeting(transcript)
+        summary = analysis.summary.strip()
+        if not summary:
+            logger.warning("YandexGPT returned blank summary: meeting_id=%s", meeting.id)
+            raise GPTAnalysisError("YandexGPT returned empty summary")
+
+        analysis.summary = summary
+        meeting.summary = summary
         for extracted in analysis.tasks:
             db.add(
                 Task(
@@ -46,7 +69,10 @@ class MeetingAnalysisService:
             .order_by(TranscriptSegment.sequence)
         )
         segments = result.scalars().all()
-        return "\n".join(
-            f"[{segment.speaker_tag}] {segment.text}" for segment in segments
-        )
+        lines = []
+        for segment in segments:
+            text = segment.text.strip()
+            if text:
+                lines.append(f"[{segment.speaker_tag}] {text}")
+        return "\n".join(lines)
 
