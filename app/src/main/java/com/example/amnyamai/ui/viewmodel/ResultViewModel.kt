@@ -47,10 +47,25 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.getCompletedMeeting(meetingId).fold(
                 onSuccess = { meeting ->
-                    _uiState.value = if (meeting.tasks.isEmpty())
-                        ResultUiState.AllDone(emptyList(), meeting.summary)
-                    else
-                        ResultUiState.Ready(meeting.summary, meeting.tasks)
+                    when (meeting.status) {
+                        com.example.amnyamai.data.model.MeetingStatus.PROCESSING,
+                        com.example.amnyamai.data.model.MeetingStatus.ACTIVE -> {
+                            _uiState.value = ResultUiState.Loading
+                            viewModelScope.launch {
+                                kotlinx.coroutines.delay(1500L)
+                                reload(meetingId)
+                            }
+                        }
+                        com.example.amnyamai.data.model.MeetingStatus.FAILED -> {
+                            _uiState.value = ResultUiState.Error("Meeting processing failed")
+                        }
+                        com.example.amnyamai.data.model.MeetingStatus.DONE -> {
+                            _uiState.value = if (meeting.tasks.isEmpty())
+                                ResultUiState.AllDone(emptyList(), meeting.summary)
+                            else
+                                ResultUiState.Ready(meeting.summary, meeting.tasks)
+                        }
+                    }
                 },
                 onFailure = { _uiState.value = ResultUiState.Error(it.message ?: "Ошибка") }
             )

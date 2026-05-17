@@ -50,6 +50,7 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private var isBound = false
     private var webSocket: MeetingWebSocket? = null
     @Volatile private var isWebSocketReady = false
+    @Volatile private var isStopping = false
 
     private fun tryStartRecording() {
         if (isWebSocketReady && recService != null && recService?.isRecording == false) {
@@ -117,7 +118,14 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun reset() { _uiState.value = RecordingUiState.Idle }
 
     fun stopAndUpload() {
+        if (isStopping) return
+        if (_uiState.value !is RecordingUiState.Recording) return
+        isStopping = true
+
         isWebSocketReady = false
+        // Immediate feedback; also prevents double-taps during shutdown.
+        _uiState.value = RecordingUiState.Uploading
+
         timerJob?.cancel()
         recService?.stopRecording()
         unbind()
@@ -128,14 +136,21 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 it.disconnect()
                 withTimeoutOrNull(2000L) { it.awaitClosed() }
             }
-            delay(3000L)
+            delay(300L)
             analyzeAndNavigate()
+            isStopping = false
         }
     }
 
     private suspend fun analyzeAndNavigate() {
         _uiState.value = RecordingUiState.Uploading
-        repository.finishMeeting(meetingId).fold(
+        val finishResult = repository.finishMeeting(meetingId)
+        val failureMsg = finishResult.exceptionOrNull()?.message
+        if (failureMsg != null && failureMsg.contains("409")) {
+            _navigateToResult.value = meetingId
+            return
+        }
+        finishResult.fold(
             onSuccess = { _navigateToResult.value = meetingId },
             onFailure = { _uiState.value = RecordingUiState.Error(it.message ?: "Ошибка анализа") }
         )

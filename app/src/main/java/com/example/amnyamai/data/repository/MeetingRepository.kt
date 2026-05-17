@@ -79,6 +79,27 @@ class MeetingRepository(context: Context) {
                 return Result.failure(Exception("Встреча не найдена: ${meetingRes.code()}"))
 
             val meetingDto = meetingRes.body()!!
+            val meetingStatus = when (meetingDto.status.lowercase()) {
+                "completed" -> MeetingStatus.DONE
+                "processing" -> MeetingStatus.PROCESSING
+                "recording", "created" -> MeetingStatus.ACTIVE
+                "failed" -> MeetingStatus.FAILED
+                else -> MeetingStatus.ACTIVE
+            }
+
+            // If meeting isn't completed yet, don't pretend it's done. Let UI poll.
+            if (meetingStatus != MeetingStatus.DONE) {
+                return Result.success(
+                    Meeting(
+                        id = meetingId,
+                        title = meetingDto.title,
+                        organizer = "",
+                        status = meetingStatus,
+                        summary = meetingDto.summary ?: "",
+                        tasks = emptyList()
+                    )
+                )
+            }
 
             // Use tasks cached from finishMeeting if available; otherwise fetch
             val tasks = taskCache[meetingId] ?: run {
@@ -104,7 +125,7 @@ class MeetingRepository(context: Context) {
                     id = meetingId,
                     title = meetingDto.title,
                     organizer = "",
-                    status = MeetingStatus.DONE,
+                    status = meetingStatus,
                     summary = meetingDto.summary ?: "",
                     tasks = tasks
                 )
