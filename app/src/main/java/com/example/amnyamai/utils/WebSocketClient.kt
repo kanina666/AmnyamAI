@@ -1,5 +1,6 @@
 package com.example.amnyamai.utils
 
+import android.util.Log
 import com.example.amnyamai.data.remote.RetrofitClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -92,7 +93,10 @@ class MeetingWebSocket(
 
     fun sendAudioChunk(chunk: ByteArray): Boolean {
         if (!isConnected) return false
-        return ws?.send(chunk.toByteString()) ?: false
+        val chank =  ws?.send(chunk.toByteString()) ?: false
+        Log.d("TAG", "sendAudioChunk: $chank")
+
+        return chank
     }
 
     suspend fun awaitClosed() = closedDeferred.await()
