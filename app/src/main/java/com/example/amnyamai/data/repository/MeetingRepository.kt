@@ -1,6 +1,7 @@
 package com.example.amnyamai.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.example.amnyamai.data.local.UserStorage
 import com.example.amnyamai.data.model.Meeting
 import com.example.amnyamai.data.model.MeetingStatus
@@ -8,7 +9,15 @@ import com.example.amnyamai.data.model.Task
 import com.example.amnyamai.data.remote.MeetingCreateRequest
 import com.example.amnyamai.data.remote.RetrofitClient
 import com.example.amnyamai.data.remote.TaskUpdateRequest
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private const val TAG = "MeetingRepo"
 
 class MeetingRepository(context: Context) {
 
@@ -21,13 +30,26 @@ class MeetingRepository(context: Context) {
     }
 
     suspend fun createMeeting(title: String): Result<Pair<String, String>> {
+        Log.d(TAG, "createMeeting: запуск запроса с заголовком '$title'")
         return try {
             val res = api.createMeeting(MeetingCreateRequest(title))
+            Log.d(TAG, "createMeeting: ответ получен, code=${res.code()}")
             if (res.isSuccessful && res.body() != null) {
                 val id = res.body()!!.id
+                Log.d(TAG, "createMeeting: успех, id=$id")
                 Result.success(id to id.take(8).uppercase())
-            } else Result.failure(Exception("Ошибка создания: ${res.code()}"))
-        } catch (e: Exception) { Result.failure(e) }
+            } else {
+                val error = res.errorBody()?.string()
+                Log.e(TAG, "createMeeting: ошибка бэкенда code=${res.code()} body=$error")
+                Result.failure(Exception("Ошибка создания: ${res.code()}"))
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "createMeeting: Таймаут соединения. Проверьте, запущен ли сервер по адресу ${RetrofitClient.BASE_URL}", e)
+            Result.failure(Exception("Сервер не отвечает. Проверьте подключение к сети."))
+        } catch (e: Exception) {
+            Log.e(TAG, "createMeeting: исключение при запросе", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun finishMeeting(meetingId: String): Result<List<Task>> {
@@ -38,15 +60,30 @@ class MeetingRepository(context: Context) {
                     Task(
                         id = dto.id,
                         title = dto.title,
-                        description = dto.description ?: "",
+                        description = normalizeDescription(dto.description),
                         assignee = dto.speaker_tag,
-                        deadline = dto.due_at,
+                        deadline = formatDueAt(dto.due_at),
                         meetingId = meetingId
                     )
                 }
                 taskCache[meetingId] = tasks
                 Result.success(tasks)
-            } else Result.failure(Exception("Ошибка анализа: ${res.code()}"))
+            } else {
+                val code = res.code()
+                val errBody = res.errorBody()?.string().orEmpty()
+                when (code) {
+                    409 -> {
+                        val lower = errBody.lowercase()
+                        when {
+                            "already being processed" in lower -> Result.failure(Exception("MEETING_PROCESSING"))
+                            "recording failed" in lower -> Result.failure(Exception("MEETING_FAILED"))
+                            else -> Result.failure(Exception("MEETING_CONFLICT $errBody".trim()))
+                        }
+                    }
+                    422 -> Result.failure(Exception("EMPTY_TRANSCRIPT"))
+                    else -> Result.failure(Exception("ANALYSIS_HTTP_$code $errBody".trim()))
+                }
+            }
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -57,6 +94,27 @@ class MeetingRepository(context: Context) {
                 return Result.failure(Exception("Встреча не найдена: ${meetingRes.code()}"))
 
             val meetingDto = meetingRes.body()!!
+            val meetingStatus = when (meetingDto.status.lowercase()) {
+                "completed" -> MeetingStatus.DONE
+                "processing" -> MeetingStatus.PROCESSING
+                "recording", "created" -> MeetingStatus.ACTIVE
+                "failed" -> MeetingStatus.FAILED
+                else -> MeetingStatus.ACTIVE
+            }
+
+            // If meeting isn't completed yet, don't pretend it's done. Let UI poll.
+            if (meetingStatus != MeetingStatus.DONE) {
+                return Result.success(
+                    Meeting(
+                        id = meetingId,
+                        title = meetingDto.title,
+                        organizer = "",
+                        status = meetingStatus,
+                        summary = meetingDto.summary ?: "",
+                        tasks = emptyList()
+                    )
+                )
+            }
 
             // Use tasks cached from finishMeeting if available; otherwise fetch
             val tasks = taskCache[meetingId] ?: run {
@@ -69,9 +127,9 @@ class MeetingRepository(context: Context) {
                         Task(
                             id = dto.id,
                             title = dto.title,
-                            description = dto.description ?: "",
+                            description = normalizeDescription(dto.description),
                             assignee = dto.speaker_tag,
-                            deadline = dto.due_at,
+                            deadline = formatDueAt(dto.due_at),
                             meetingId = meetingId
                         )
                     }
@@ -82,7 +140,7 @@ class MeetingRepository(context: Context) {
                     id = meetingId,
                     title = meetingDto.title,
                     organizer = "",
-                    status = MeetingStatus.DONE,
+                    status = meetingStatus,
                     summary = meetingDto.summary ?: "",
                     tasks = tasks
                 )
@@ -92,8 +150,16 @@ class MeetingRepository(context: Context) {
 
     suspend fun confirmAndSyncTask(task: Task): Result<Unit> {
         return try {
-            api.confirmTask(task.id)
-            api.syncTaskCalendar(task.id)
+            val confirmRes = api.confirmTask(task.id)
+            if (!confirmRes.isSuccessful) {
+                val body = confirmRes.errorBody()?.string()
+                return Result.failure(Exception("Confirm failed: ${confirmRes.code()} ${body ?: ""}".trim()))
+            }
+            val syncRes = api.syncTaskCalendar(task.id)
+            if (!syncRes.isSuccessful) {
+                val body = syncRes.errorBody()?.string()
+                return Result.failure(Exception("Calendar sync failed: ${syncRes.code()} ${body ?: ""}".trim()))
+            }
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -125,5 +191,58 @@ class MeetingRepository(context: Context) {
                 Result.success(list)
             } else Result.failure(Exception("Ошибка загрузки истории: ${res.code()}"))
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun deleteMeeting(meetingId: String): Result<Unit> {
+        return try {
+            val res = api.deleteMeeting(meetingId)
+            if (res.isSuccessful) {
+                taskCache.remove(meetingId)
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Ошибка удаления: ${res.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun normalizeDescription(value: String?): String {
+        val text = value?.trim().orEmpty()
+        if (text.isBlank()) return ""
+        if (text.equals("null", ignoreCase = true)) return ""
+        if (text.equals("none", ignoreCase = true)) return ""
+        return text
+    }
+
+    private fun formatDueAt(value: String?): String? {
+        val text = value?.trim().orEmpty()
+        if (text.isBlank()) return null
+        if (text.equals("null", ignoreCase = true)) return null
+        if (text.equals("none", ignoreCase = true)) return null
+
+        val zone = ZoneId.systemDefault()
+        val formatter = DateTimeFormatter.ofPattern("d MMMM yyyy, HH:mm", Locale("ru"))
+        val dateOnlyFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru"))
+
+        // Support a few common formats we might get from backend/LLM.
+        return try {
+            OffsetDateTime.parse(text).atZoneSameInstant(zone).format(formatter)
+        } catch (_: Exception) {
+            try {
+                Instant.parse(text).atZone(zone).format(formatter)
+            } catch (_: Exception) {
+                try {
+                    LocalDateTime.parse(text).atZone(zone).format(formatter)
+                } catch (_: Exception) {
+                    try {
+                        LocalDate.parse(text).format(dateOnlyFormatter)
+                    } catch (_: Exception) {
+                        // If we can't parse, show the raw string (but at least avoid "null").
+                        text
+                    }
+                }
+            }
+        }
     }
 }

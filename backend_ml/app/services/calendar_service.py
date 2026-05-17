@@ -1,7 +1,9 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
+from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 
 from app.core.config import settings
@@ -28,7 +30,6 @@ class GoogleCalendarService:
             token_uri="https://oauth2.googleapis.com/token",
             client_id=settings.google_client_id,
             client_secret=settings.google_client_secret,
-            scopes=["https://www.googleapis.com/auth/calendar.events"],
         )
         service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
@@ -43,9 +44,17 @@ class GoogleCalendarService:
             "start": {"dateTime": start.isoformat()},
             "end": {"dateTime": end.isoformat()},
         }
-        created = service.events().insert(calendarId="primary", body=event).execute()
+        try:
+            created = service.events().insert(calendarId="primary", body=event).execute()
+        except RefreshError as exc:
+            raise CalendarSyncError(
+                "Google Calendar authorization is invalid. Re-login and grant Calendar access."
+            ) from exc
+        except HttpError as exc:
+            raise CalendarSyncError(
+                "Google Calendar permission is missing. Re-login and grant Calendar access."
+            ) from exc
         event_id = created.get("id")
         if not event_id:
             raise CalendarSyncError("Google Calendar returned event without id")
         return event_id
-

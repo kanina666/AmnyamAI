@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +36,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,10 +51,11 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(onBack: () -> Unit) {
+fun HistoryScreen(onBack: () -> Unit, onOpenMeeting: (meetingId: String) -> Unit) {
     val vm: HistoryViewModel = viewModel()
     val meetings by vm.meetings.collectAsState()
     val isLoading by vm.isLoading.collectAsState()
+    val haptics = LocalHapticFeedback.current
 
     Scaffold(
         topBar = {
@@ -102,7 +106,17 @@ fun HistoryScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     itemsIndexed(meetings) { _, meeting ->
-                        MeetingHistoryCard(meeting)
+                        MeetingHistoryCard(
+                            meeting = meeting,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onOpenMeeting(meeting.id)
+                            },
+                            onDelete = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.deleteMeeting(meeting.id)
+                            }
+                        )
                     }
                 }
             }
@@ -111,12 +125,13 @@ fun HistoryScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun MeetingHistoryCard(meeting: Meeting) {
+private fun MeetingHistoryCard(meeting: Meeting, onClick: () -> Unit, onDelete: () -> Unit) {
     val dateStr = remember(meeting.createdAt) {
         SimpleDateFormat("d MMMM yyyy, HH:mm", Locale("ru")).format(Date(meeting.createdAt))
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -138,6 +153,15 @@ private fun MeetingHistoryCard(meeting: Meeting) {
                         dateStr,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Удалить",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

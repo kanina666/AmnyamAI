@@ -2,6 +2,7 @@ package com.example.amnyamai.data.remote
 
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -10,12 +11,8 @@ import retrofit2.http.Query
 
 interface ApiService {
 
-    // ─── Auth ────────────────────────────────────────────────────────────────
-
     @POST("api/v1/auth/google/callback")
     suspend fun googleCallback(@Query("code") code: String): Response<TokenResponse>
-
-    // ─── Meetings ─────────────────────────────────────────────────────────────
 
     @POST("api/v1/meetings")
     suspend fun createMeeting(@Body request: MeetingCreateRequest): Response<MeetingReadDto>
@@ -26,13 +23,14 @@ interface ApiService {
     @GET("api/v1/meetings/{id}")
     suspend fun getMeeting(@Path("id") id: String): Response<MeetingReadDto>
 
+    @DELETE("api/v1/meetings/{id}")
+    suspend fun deleteMeeting(@Path("id") id: String): Response<Unit>
+
     @POST("api/v1/meetings/join/{identifier}")
     suspend fun joinMeeting(@Path("identifier") identifier: String): Response<MeetingReadDto>
 
     @POST("api/v1/meetings/{id}/finish")
     suspend fun finishMeeting(@Path("id") id: String): Response<List<TaskReadDto>>
-
-    // ─── Tasks ────────────────────────────────────────────────────────────────
 
     @GET("api/v1/tasks")
     suspend fun listTasks(): Response<List<TaskReadDto>>
@@ -46,8 +44,6 @@ interface ApiService {
     @POST("api/v1/tasks/{id}/sync-calendar")
     suspend fun syncTaskCalendar(@Path("id") id: String): Response<CalendarSyncDto>
 }
-
-// ─── DTOs ────────────────────────────────────────────────────────────────────
 
 data class TokenResponse(
     val access_token: String,

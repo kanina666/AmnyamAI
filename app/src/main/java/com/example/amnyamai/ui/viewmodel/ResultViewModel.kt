@@ -21,7 +21,8 @@ sealed class ResultUiState {
         val acceptedTasks: List<Task>,
         val summary: String,
         val isSaving: Boolean = false,
-        val saved: Boolean = false
+        val saved: Boolean = false,
+        val errorMessage: String? = null
     ) : ResultUiState()
     data class Error(val message: String) : ResultUiState()
 }
@@ -34,9 +35,11 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<ResultUiState> = _uiState
 
     private var loadedId = ""
+    private var pollAttempts = 0
 
     fun reload(meetingId: String) {
         loadedId = ""
+        pollAttempts = 0
         load(meetingId)
     }
 
@@ -46,10 +49,30 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.getCompletedMeeting(meetingId).fold(
                 onSuccess = { meeting ->
-                    _uiState.value = if (meeting.tasks.isEmpty())
-                        ResultUiState.AllDone(emptyList(), meeting.summary)
-                    else
-                        ResultUiState.Ready(meeting.summary, meeting.tasks)
+                    when (meeting.status) {
+                        com.example.amnyamai.data.model.MeetingStatus.PROCESSING,
+                        com.example.amnyamai.data.model.MeetingStatus.ACTIVE -> {
+                            _uiState.value = ResultUiState.Loading
+                            viewModelScope.launch {
+                                pollAttempts++
+                                if (pollAttempts > 40) {
+                                    _uiState.value = ResultUiState.Error("Analysis is taking too long. Please retry.")
+                                    return@launch
+                                }
+                                kotlinx.coroutines.delay(1500L)
+                                reload(meetingId)
+                            }
+                        }
+                        com.example.amnyamai.data.model.MeetingStatus.FAILED -> {
+                            _uiState.value = ResultUiState.Error("Meeting analysis failed")
+                        }
+                        com.example.amnyamai.data.model.MeetingStatus.DONE -> {
+                            _uiState.value = if (meeting.tasks.isEmpty())
+                                ResultUiState.AllDone(emptyList(), meeting.summary)
+                            else
+                                ResultUiState.Ready(meeting.summary, meeting.tasks)
+                        }
+                    }
                 },
                 onFailure = { _uiState.value = ResultUiState.Error(it.message ?: "Ошибка") }
             )
@@ -58,7 +81,7 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
 
     fun acceptTask(task: Task) {
         val state = _uiState.value as? ResultUiState.Ready ?: return
-        val newAccepted = state.acceptedTasks + task
+        val newAccepted = (state.acceptedTasks + task).distinctBy { it.id }
         val next = state.currentIndex + 1
         _uiState.value = if (next >= state.tasks.size)
             ResultUiState.AllDone(newAccepted, state.summary)
@@ -78,12 +101,20 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
     fun saveToCalendar() {
         val state = _uiState.value as? ResultUiState.AllDone ?: return
         if (state.isSaving || state.saved) return
-        _uiState.value = state.copy(isSaving = true)
+        _uiState.value = state.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
-            state.acceptedTasks.forEach { task ->
-                repository.confirmAndSyncTask(task)
+            for (task in state.acceptedTasks) {
+                val res = repository.confirmAndSyncTask(task)
+                if (res.isFailure) {
+                    _uiState.value = state.copy(
+                        isSaving = false,
+                        saved = false,
+                        errorMessage = res.exceptionOrNull()?.message ?: "Calendar sync failed"
+                    )
+                    return@launch
+                }
             }
-            _uiState.value = state.copy(isSaving = false, saved = true)
+            _uiState.value = state.copy(isSaving = false, saved = true, errorMessage = null)
         }
     }
 

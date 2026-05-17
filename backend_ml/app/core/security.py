@@ -79,6 +79,8 @@ async def exchange_google_code(
     code: str,
     redirect_uri: str | None = None,
 ) -> dict[str, Any]:
+    if redirect_uri is not None and not redirect_uri.strip():
+        redirect_uri = None
     if (
         not settings.google_client_id
         or not settings.google_client_secret
@@ -92,17 +94,28 @@ async def exchange_google_code(
         str(settings.google_redirect_uri) if redirect_uri is None else redirect_uri
     )
     async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "code": code,
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "redirect_uri": token_redirect_uri,
-                "grant_type": "authorization_code",
-            },
-        )
-        response.raise_for_status()
+        data = {
+            "code": code,
+            "client_id": settings.google_client_id,
+            "client_secret": settings.google_client_secret,
+            "grant_type": "authorization_code",
+        }
+        if redirect_uri is not None:
+            data["redirect_uri"] = token_redirect_uri
+
+        response = await client.post(GOOGLE_TOKEN_URL, data=data)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail: Any
+            try:
+                detail = exc.response.json()
+            except Exception:
+                detail = exc.response.text
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"message": "Google token exchange failed", "google": detail},
+            ) from exc
         return response.json()
 
 

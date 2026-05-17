@@ -17,18 +17,13 @@ from app.db.session import get_db
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.get("/google/url", response_model=AuthUrlResponse)
-async def google_auth_url() -> AuthUrlResponse:
-    state = str(uuid4())
-    return AuthUrlResponse(url=build_google_oauth_url(state), state=state)
-
-
-@router.post("/google/callback", response_model=TokenResponse)
-async def google_callback(
-    code: str = Query(...),
-    db: AsyncSession = Depends(get_db),
+async def _issue_token_from_google_code(
+    *,
+    code: str,
+    db: AsyncSession,
+    redirect_uri: str | None,
 ) -> TokenResponse:
-    token_payload = await exchange_google_code(code, redirect_uri="")
+    token_payload = await exchange_google_code(code, redirect_uri=redirect_uri)
     access_token = token_payload.get("access_token")
     if not access_token:
         raise HTTPException(
@@ -68,4 +63,38 @@ async def google_callback(
         access_token=create_access_token(user.id),
         user=user,
     )
+
+
+@router.get("/google/url", response_model=AuthUrlResponse)
+async def google_auth_url() -> AuthUrlResponse:
+    state = str(uuid4())
+    return AuthUrlResponse(url=build_google_oauth_url(state), state=state)
+
+
+@router.get("/google/callback", response_model=TokenResponse)
+async def google_callback_get(
+    code: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """
+    Browser redirect callback.
+
+    This must be a GET handler because Google's OAuth server redirects the user agent
+    back to the application's redirect URI with `code` as a query parameter.
+    """
+    return await _issue_token_from_google_code(code=code, db=db, redirect_uri=None)
+
+
+@router.post("/google/callback", response_model=TokenResponse)
+async def google_callback(
+    code: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """
+    Code exchange endpoint used by the Android app.
+
+    When using server auth codes obtained from a native app (offline access),
+    Google's token exchange examples allow an empty redirect_uri.
+    """
+    return await _issue_token_from_google_code(code=code, db=db, redirect_uri="")
 

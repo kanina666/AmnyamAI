@@ -120,7 +120,6 @@ fun HomeScreen(
         ) {
             item { Spacer(Modifier.height(8.dp)) }
 
-            // Гифка + кнопки
             item {
                 val user = vm.currentUser
                 Column(
@@ -184,7 +183,6 @@ fun HomeScreen(
             }
 
 
-            // Последние встречи
             if (meetings.isNotEmpty()) {
                 item {
                     Spacer(Modifier.height(4.dp))

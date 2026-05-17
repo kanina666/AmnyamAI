@@ -18,4 +18,4 @@ data class Participant(
     val login: String
 )
 
-enum class MeetingStatus { ACTIVE, PROCESSING, DONE }
+enum class MeetingStatus { ACTIVE, PROCESSING, DONE, FAILED }

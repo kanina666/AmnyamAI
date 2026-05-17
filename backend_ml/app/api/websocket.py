@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+import grpc
 from sqlalchemy import func, select
 from starlette.websockets import WebSocketState
 
@@ -128,15 +129,50 @@ async def _recognize_and_emit(
             sent = await _send_transcript_event(websocket, meeting_id, result)
             if not sent:
                 websocket_closed.set()
-    except Exception:
-        logger.exception("SpeechKit streaming failed: meeting_id=%s", meeting_id)
+    except Exception as exc:
+        error_code = "speechkit_failed"
+        message = "Speech recognition failed"
+        details: str | None = None
+
+        if isinstance(exc, grpc.aio.AioRpcError):
+            code = exc.code()
+            details = exc.details()
+            if code == grpc.StatusCode.UNAUTHENTICATED:
+                error_code = "speechkit_auth"
+                message = "SpeechKit authentication failed"
+            elif code == grpc.StatusCode.PERMISSION_DENIED:
+                error_code = "speechkit_permission"
+                message = "SpeechKit permission denied"
+            else:
+                error_code = f"speechkit_grpc_{code.name.lower()}"
+                message = "SpeechKit gRPC request failed"
+        elif isinstance(exc, RuntimeError) and "not configured" in str(exc).lower():
+            error_code = "speechkit_not_configured"
+            message = "SpeechKit credentials are not configured"
+
+        logger.exception(
+            "SpeechKit streaming failed: meeting_id=%s error_code=%s",
+            meeting_id,
+            error_code,
+        )
+
+        # Mark meeting as failed so /finish doesn't pretend recognition succeeded.
+        async with AsyncSessionLocal() as db:
+            meeting = await db.get(Meeting, meeting_id)
+            if meeting:
+                meeting.status = MeetingStatus.FAILED
+                meeting.ended_at = datetime.now(UTC)
+                await db.commit()
+
         if not websocket_closed.is_set():
             sent = await _send_websocket_json(
                 websocket,
                 {
                     "type": "error",
                     "meeting_id": meeting_id,
-                    "message": "Speech recognition failed",
+                    "message": message,
+                    "error_code": error_code,
+                    "details": details,
                 },
             )
             if not sent:

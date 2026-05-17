@@ -2,9 +2,11 @@ package com.example.amnyamai.ui.screens
 
 import android.Manifest
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +55,7 @@ fun RecordingScreen(meetingId: String, code: String, onDone: (String) -> Unit) {
     val uiState by vm.uiState.collectAsState()
     val navigateTo by vm.navigateToResult.collectAsState()
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(navigateTo) { navigateTo?.let { onDone(it) } }
 
@@ -75,18 +79,19 @@ fun RecordingScreen(meetingId: String, code: String, onDone: (String) -> Unit) {
             state = state,
             code = code,
             onStop = { vm.stopAndUpload() },
-            onCopy = { clipboard.setText(AnnotatedString(code)) }
+            onCopy = { 
+                clipboard.setText(AnnotatedString(code))
+                Toast.makeText(context, "Код скопирован", Toast.LENGTH_SHORT).show()
+            }
         )
         is RecordingUiState.Uploading -> UploadingLayout()
         is RecordingUiState.Error -> AmNyamErrorDialog(
             message = state.message,
             onDismiss = { vm.reset() },
-            onRetry = { vm.stopAndUpload() }
+            onRetry = { vm.reset() }
         )
     }
 }
-
-// ── Ожидание начала записи ────────────────────────────────────────────────────
 
 @Composable
 private fun IdleLayout(onStart: () -> Unit) {
@@ -125,8 +130,6 @@ private fun IdleLayout(onStart: () -> Unit) {
     }
 }
 
-// ── Идёт запись ───────────────────────────────────────────────────────────────
-
 @Composable
 private fun RecordingLayout(
     state: RecordingUiState.Recording,
@@ -142,7 +145,6 @@ private fun RecordingLayout(
     ) {
         Spacer(Modifier.height(32.dp))
 
-        // Таймер + REC-индикатор
         RecIndicator(state.seconds)
 
         if (state.isReconnecting) {
@@ -156,7 +158,6 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(16.dp))
 
-        // Гифка
         AmNyamGif(
             asset = "anmyam-listen-talk.gif",
             modifier = Modifier
@@ -166,27 +167,28 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(12.dp))
 
-        // Код для участников
-        Text(
-            "Код встречи: $code",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            "нажми чтобы скопировать",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .padding(bottom = 4.dp)
-                .run {
-                    // кликабельный текст
-                    this
-                }
-        )
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onCopy() }
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            Text(
+                "Код встречи: $code",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "нажми чтобы скопировать",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
 
         Spacer(Modifier.height(20.dp))
 
-        // Sound bar
         SoundBar(
             modifier = Modifier
                 .fillMaxWidth()
@@ -195,7 +197,6 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(24.dp))
 
-        // Кнопка завершить
         Button(
             onClick = onStop,
             modifier = Modifier
@@ -220,8 +221,6 @@ private fun RecordingLayout(
         Spacer(Modifier.height(32.dp))
     }
 }
-
-// ── Анализ ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun UploadingLayout() {
@@ -252,8 +251,6 @@ private fun UploadingLayout() {
         )
     }
 }
-
-// ── REC-индикатор ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun RecIndicator(seconds: Long) {

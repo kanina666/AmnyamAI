@@ -25,10 +25,18 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _isLoading.value = true
             repository.getMeetingHistory().fold(
-                onSuccess = { _meetings.value = it },
+                onSuccess = { _meetings.value = it.sortedByDescending { m -> m.createdAt } },
                 onFailure = { _meetings.value = emptyList() }
             )
             _isLoading.value = false
+        }
+    }
+
+    fun deleteMeeting(meetingId: String) {
+        viewModelScope.launch {
+            repository.deleteMeeting(meetingId).onSuccess {
+                _meetings.value = _meetings.value.filter { it.id != meetingId }
+            }
         }
     }
 }

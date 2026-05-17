@@ -45,7 +45,16 @@ fun AmNyamErrorDialog(
                 )
             }
         },
-        text = null,
+        text = {
+            if (message.isNotBlank()) {
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
         confirmButton = {
             if (onRetry != null) {
                 Button(
