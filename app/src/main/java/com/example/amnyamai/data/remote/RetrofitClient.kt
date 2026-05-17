@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     private const val DEV_URL = "http://10.0.2.2:8000/"
-    private const val PROD_URL = "http://192.168.0.102:8000/"
+    private const val PROD_URL = "http://172.28.20.45:8000/"
 
     val BASE_URL: String = (if (isEmulator()) DEV_URL else PROD_URL).also {
         android.util.Log.d("RetrofitClient", "Используется BASE_URL: $it")
