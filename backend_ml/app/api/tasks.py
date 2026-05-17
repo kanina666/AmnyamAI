@@ -89,13 +89,11 @@ async def sync_task_to_calendar(
     try:
         event_id = await GoogleCalendarService().create_event_for_task(user, task)
     except CalendarSyncError as exc:
-        # Make this a client-visible error instead of a silent 500.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
     except Exception as exc:
-        # Bubble up provider errors in a readable way for the client.
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Google Calendar sync failed: {exc}",

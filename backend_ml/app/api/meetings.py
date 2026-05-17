@@ -109,7 +109,6 @@ async def delete_meeting(
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    # Not the owner: remove user's participation (hide from their history).
     result = await db.execute(
         select(MeetingParticipant).where(
             MeetingParticipant.meeting_id == meeting_id,
@@ -146,7 +145,6 @@ async def finish_meeting(
 ) -> list[Task]:
     meeting = await _get_owned_meeting(db, meeting_id, user_id)
     if meeting.status == MeetingStatus.COMPLETED:
-        # Idempotency: avoid running analysis twice and duplicating tasks.
         result = await db.execute(
             select(Task).where(Task.meeting_id == meeting_id).order_by(Task.created_at)
         )

@@ -61,18 +61,15 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
 
     private var pendingPrefill: GooglePrefill? = null
 
-    // ── Шаг 1: Credential Manager → idToken + профиль ────────────────────────
-
     fun startGoogleSignIn(
         context: Context,
         authLauncher: ActivityResultLauncher<IntentSenderRequest>
     ) {
         Log.d(TAG, "startGoogleSignIn: старт")
-        printSignature(context) // Выводим SHA-1 в логи для проверки
+        printSignature(context)
         _registerState.value = RegisterState.Loading
         viewModelScope.launch {
             try {
-                // Шаг 1 — Credential Manager
                 val option = GetSignInWithGoogleOption.Builder(GoogleConfig.WEB_CLIENT_ID).build()
                 val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
 
@@ -94,7 +91,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 )
                 pendingPrefill = prefill
 
-                // Шаг 2 — Authorization API для serverAuthCode
                 Log.d(TAG, "startGoogleSignIn: запрашиваем serverAuthCode через Authorization API")
                 val authRequest = AuthorizationRequest.builder()
                     // forceCodeForRefreshToken=true: ensures we can obtain a refresh token even if
@@ -148,8 +144,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ── Шаг 2b: результат IntentSender (пользователь дал согласие) ───────────
-
     fun onAuthorizationResult(authResult: AuthorizationResult) {
         val prefill = pendingPrefill
         val code = authResult.serverAuthCode
@@ -160,7 +154,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        // Пытаемся сразу войти через backend
         _registerState.value = RegisterState.Loading
         viewModelScope.launch {
             try {
@@ -170,7 +163,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                     storage.saveToken(body.access_token)
                     RetrofitClient.setToken(body.access_token)
                     
-                    // Сохраняем пользователя (если данных нет, используем ID как логин)
                     storage.saveUser(
                         User(
                             name = prefill?.name ?: "User",
@@ -183,8 +175,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                     _registerState.value = RegisterState.Idle
                     _registered.value = true
                     } else {
-                        // Если сервер вернул ошибку (например, пользователя надо создать),
-                        // тогда показываем форму регистрации
                         Log.d(TAG, "onAuthorizationResult: сервер не авторизовал сразу (код ${res.code()}), показываем форму")
                         _googlePrefill.value = prefill?.copy(serverAuthCode = code) ?: GooglePrefill(
                             name = "", lastName = "", email = "", serverAuthCode = code, idToken = null
@@ -193,7 +183,6 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                     }
             } catch (e: Exception) {
                 Log.e(TAG, "onAuthorizationResult: ошибка связи с сервером", e)
-                // В случае ошибки сети тоже даем шанс заполнить форму или попробовать позже
                 _googlePrefill.value = prefill?.copy(serverAuthCode = code)
                 _registerState.value = RegisterState.Idle
             }
@@ -210,15 +199,12 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         _registerState.value = RegisterState.Error(message)
     }
 
-    // ── Регистрация по форме ──────────────────────────────────────────────────
-
     fun register(name: String, lastName: String, login: String) {
         val google = _googlePrefill.value
         Log.d(TAG, "register: name='$name', lastName='$lastName', login='$login'")
         Log.d(TAG, "register: serverAuthCode=${if (google?.serverAuthCode != null) "есть" else "нет — только локальная запись"}")
 
         if (google?.serverAuthCode == null) {
-            Log.d(TAG, "register: сохраняем пользователя локально (без backend)")
             storage.saveUser(
                 User(
                     name = name.trim(),

@@ -76,7 +76,6 @@ fun LoginScreen(
     var lastName by remember { mutableStateOf("") }
     var login by remember { mutableStateOf("") }
 
-    // Форму показываем только если получили данные от Google, но сервер требует регистрации
     val showForm = prefill != null
 
     LaunchedEffect(prefill) {
@@ -173,7 +172,6 @@ fun LoginScreen(
                 }
             }
         } else {
-            // Главная универсальная кнопка
             Button(
                 onClick = { scope.launch { vm.startGoogleSignIn(ctx, authLauncher) } },
                 modifier = Modifier

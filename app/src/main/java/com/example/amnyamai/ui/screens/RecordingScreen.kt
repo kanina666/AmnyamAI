@@ -93,8 +93,6 @@ fun RecordingScreen(meetingId: String, code: String, onDone: (String) -> Unit) {
     }
 }
 
-// ── Ожидание начала записи ────────────────────────────────────────────────────
-
 @Composable
 private fun IdleLayout(onStart: () -> Unit) {
     Column(
@@ -132,8 +130,6 @@ private fun IdleLayout(onStart: () -> Unit) {
     }
 }
 
-// ── Идёт запись ───────────────────────────────────────────────────────────────
-
 @Composable
 private fun RecordingLayout(
     state: RecordingUiState.Recording,
@@ -149,7 +145,6 @@ private fun RecordingLayout(
     ) {
         Spacer(Modifier.height(32.dp))
 
-        // Таймер + REC-индикатор
         RecIndicator(state.seconds)
 
         if (state.isReconnecting) {
@@ -163,7 +158,6 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(16.dp))
 
-        // Гифка
         AmNyamGif(
             asset = "anmyam-listen-talk.gif",
             modifier = Modifier
@@ -173,7 +167,6 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(12.dp))
 
-        // Код для участников
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -196,7 +189,6 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(20.dp))
 
-        // Sound bar
         SoundBar(
             modifier = Modifier
                 .fillMaxWidth()
@@ -205,7 +197,6 @@ private fun RecordingLayout(
 
         Spacer(Modifier.height(24.dp))
 
-        // Кнопка завершить
         Button(
             onClick = onStop,
             modifier = Modifier
@@ -230,8 +221,6 @@ private fun RecordingLayout(
         Spacer(Modifier.height(32.dp))
     }
 }
-
-// ── Анализ ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun UploadingLayout() {
@@ -262,8 +251,6 @@ private fun UploadingLayout() {
         )
     }
 }
-
-// ── REC-индикатор ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun RecIndicator(seconds: Long) {

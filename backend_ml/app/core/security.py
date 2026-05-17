@@ -79,8 +79,6 @@ async def exchange_google_code(
     code: str,
     redirect_uri: str | None = None,
 ) -> dict[str, Any]:
-    # Some client flows (e.g. native serverAuthCode exchange) may provide an empty string.
-    # Treat it as "no redirect_uri" and omit the parameter in the token request.
     if redirect_uri is not None and not redirect_uri.strip():
         redirect_uri = None
     if (
@@ -109,7 +107,6 @@ async def exchange_google_code(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            # Propagate Google error payload to clients instead of 500.
             detail: Any
             try:
                 detail = exc.response.json()

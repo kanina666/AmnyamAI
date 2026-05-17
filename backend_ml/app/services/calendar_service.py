@@ -24,9 +24,6 @@ class GoogleCalendarService:
         if not settings.google_client_id or not settings.google_client_secret:
             raise CalendarSyncError("Google OAuth client is not configured")
 
-        # Important: do NOT pass scopes here.
-        # Google refresh tokens are bound to the scopes the user granted during consent.
-        # If we pass a scope the refresh token doesn't include, Google may respond with invalid_scope.
         credentials = Credentials(
             token=None,
             refresh_token=user.google_refresh_token,
@@ -50,13 +47,10 @@ class GoogleCalendarService:
         try:
             created = service.events().insert(calendarId="primary", body=event).execute()
         except RefreshError as exc:
-            # Refresh token exists, but is invalid for requested access (scope mismatch, revoked, etc).
             raise CalendarSyncError(
                 "Google Calendar authorization is invalid. Re-login and grant Calendar access."
             ) from exc
         except HttpError as exc:
-            # Typical case: user granted auth, but without Calendar scopes.
-            # Bubble up a readable message; the API layer will convert it to HTTP.
             raise CalendarSyncError(
                 "Google Calendar permission is missing. Re-login and grant Calendar access."
             ) from exc

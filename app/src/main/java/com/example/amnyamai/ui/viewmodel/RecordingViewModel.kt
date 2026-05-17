@@ -123,7 +123,6 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         isStopping = true
 
         isWebSocketReady = false
-        // Immediate feedback; also prevents double-taps during shutdown.
         _uiState.value = RecordingUiState.Uploading
 
         timerJob?.cancel()

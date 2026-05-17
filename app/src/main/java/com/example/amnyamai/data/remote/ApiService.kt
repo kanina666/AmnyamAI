@@ -11,12 +11,8 @@ import retrofit2.http.Query
 
 interface ApiService {
 
-    // ─── Auth ────────────────────────────────────────────────────────────────
-
     @POST("api/v1/auth/google/callback")
     suspend fun googleCallback(@Query("code") code: String): Response<TokenResponse>
-
-    // ─── Meetings ─────────────────────────────────────────────────────────────
 
     @POST("api/v1/meetings")
     suspend fun createMeeting(@Body request: MeetingCreateRequest): Response<MeetingReadDto>
@@ -36,8 +32,6 @@ interface ApiService {
     @POST("api/v1/meetings/{id}/finish")
     suspend fun finishMeeting(@Path("id") id: String): Response<List<TaskReadDto>>
 
-    // ─── Tasks ────────────────────────────────────────────────────────────────
-
     @GET("api/v1/tasks")
     suspend fun listTasks(): Response<List<TaskReadDto>>
 
@@ -50,8 +44,6 @@ interface ApiService {
     @POST("api/v1/tasks/{id}/sync-calendar")
     suspend fun syncTaskCalendar(@Path("id") id: String): Response<CalendarSyncDto>
 }
-
-// ─── DTOs ────────────────────────────────────────────────────────────────────
 
 data class TokenResponse(
     val access_token: String,
