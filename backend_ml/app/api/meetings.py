@@ -118,6 +118,11 @@ async def finish_meeting(
     db: AsyncSession = Depends(get_db),
 ) -> list[Task]:
     meeting = await _get_owned_meeting(db, meeting_id, user_id)
+    if meeting.status == MeetingStatus.FAILED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Meeting recording failed. Cannot finish meeting.",
+        )
     meeting.status = MeetingStatus.PROCESSING
     meeting.ended_at = datetime.now(UTC)
     await db.commit()
