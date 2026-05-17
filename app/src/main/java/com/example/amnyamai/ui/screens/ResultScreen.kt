@@ -213,6 +213,13 @@ private fun AllDoneContent(
     onDone: () -> Unit
 ) {
     LaunchedEffect(state.saved) { if (state.saved) onDone() }
+    if (!state.errorMessage.isNullOrBlank()) {
+        AmNyamErrorDialog(
+            message = state.errorMessage,
+            onDismiss = onDone,
+            onRetry = { vm.saveToCalendar() }
+        )
+    }
 
     Column(
         modifier = Modifier

@@ -114,8 +114,16 @@ class MeetingRepository(context: Context) {
 
     suspend fun confirmAndSyncTask(task: Task): Result<Unit> {
         return try {
-            api.confirmTask(task.id)
-            api.syncTaskCalendar(task.id)
+            val confirmRes = api.confirmTask(task.id)
+            if (!confirmRes.isSuccessful) {
+                val body = confirmRes.errorBody()?.string()
+                return Result.failure(Exception("Confirm failed: ${confirmRes.code()} ${body ?: ""}".trim()))
+            }
+            val syncRes = api.syncTaskCalendar(task.id)
+            if (!syncRes.isSuccessful) {
+                val body = syncRes.errorBody()?.string()
+                return Result.failure(Exception("Calendar sync failed: ${syncRes.code()} ${body ?: ""}".trim()))
+            }
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }

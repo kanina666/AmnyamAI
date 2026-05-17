@@ -6,7 +6,7 @@ from app.core.security import get_current_user_id
 from app.db.models import Meeting, Task, TaskStatus, User
 from app.db.schemas import CalendarSyncResponse, TaskCreate, TaskRead, TaskUpdate
 from app.db.session import get_db
-from app.services.calendar_service import GoogleCalendarService
+from app.services.calendar_service import CalendarSyncError, GoogleCalendarService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -86,7 +86,14 @@ async def sync_task_to_calendar(
             detail="User not found",
         )
 
-    event_id = await GoogleCalendarService().create_event_for_task(user, task)
+    try:
+        event_id = await GoogleCalendarService().create_event_for_task(user, task)
+    except CalendarSyncError as exc:
+        # Make this a client-visible error instead of a silent 500.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     task.calendar_event_id = event_id
     task.status = TaskStatus.SYNCED
     await db.commit()
@@ -125,4 +132,3 @@ async def _get_owned_task(db: AsyncSession, task_id: str, user_id: str) -> Task:
             detail="Task not found",
         )
     return task
-

@@ -21,7 +21,8 @@ sealed class ResultUiState {
         val acceptedTasks: List<Task>,
         val summary: String,
         val isSaving: Boolean = false,
-        val saved: Boolean = false
+        val saved: Boolean = false,
+        val errorMessage: String? = null
     ) : ResultUiState()
     data class Error(val message: String) : ResultUiState()
 }
@@ -78,12 +79,20 @@ class ResultViewModel(application: Application) : AndroidViewModel(application) 
     fun saveToCalendar() {
         val state = _uiState.value as? ResultUiState.AllDone ?: return
         if (state.isSaving || state.saved) return
-        _uiState.value = state.copy(isSaving = true)
+        _uiState.value = state.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
-            state.acceptedTasks.forEach { task ->
-                repository.confirmAndSyncTask(task)
+            for (task in state.acceptedTasks) {
+                val res = repository.confirmAndSyncTask(task)
+                if (res.isFailure) {
+                    _uiState.value = state.copy(
+                        isSaving = false,
+                        saved = false,
+                        errorMessage = res.exceptionOrNull()?.message ?: "Calendar sync failed"
+                    )
+                    return@launch
+                }
             }
-            _uiState.value = state.copy(isSaving = false, saved = true)
+            _uiState.value = state.copy(isSaving = false, saved = true, errorMessage = null)
         }
     }
 
