@@ -60,9 +60,17 @@ fun LoginScreen(
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        val data = result.data ?: return@rememberLauncherForActivityResult
-        val authResult = Identity.getAuthorizationClient(ctx).getAuthorizationResultFromIntent(data)
-        vm.onAuthorizationResult(authResult)
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            try {
+                val data = result.data ?: return@rememberLauncherForActivityResult
+                val authResult = Identity.getAuthorizationClient(ctx).getAuthorizationResultFromIntent(data)
+                vm.onAuthorizationResult(authResult)
+            } catch (e: Exception) {
+                vm.onError("Ошибка авторизации: ${e.message}")
+            }
+        } else {
+            vm.onAuthCancelled()
+        }
     }
 
     var name by remember { mutableStateOf("") }
@@ -141,11 +149,8 @@ fun LoginScreen(
                 singleLine = true
             )
             Spacer(Modifier.height(20.dp))
-            val canSubmit = if (isGoogleRegistration) {
-                name.isNotBlank() && lastName.isNotBlank() && login.isNotBlank()
-            } else {
-                login.isNotBlank()
-            }
+            val canSubmit = isGoogleRegistration && name.isNotBlank() && lastName.isNotBlank() && login.isNotBlank()
+            
             Button(
                 onClick = { vm.register(name, lastName, login) },
                 modifier = Modifier
@@ -161,7 +166,7 @@ fun LoginScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Войти", fontWeight = FontWeight.Bold)
+                    Text(if (isGoogleRegistration) "Завершить регистрацию" else "Нужен вход через Google", fontWeight = FontWeight.Bold)
                 }
             }
             if (state is RegisterState.Error) {

@@ -68,6 +68,7 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         authLauncher: ActivityResultLauncher<IntentSenderRequest>
     ) {
         Log.d(TAG, "startGoogleSignIn: старт")
+        printSignature(context) // Выводим SHA-1 в логи для проверки
         _registerState.value = RegisterState.Loading
         viewModelScope.launch {
             try {
@@ -127,8 +128,8 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 }
 
             } catch (e: GetCredentialCancellationException) {
-                Log.d(TAG, "startGoogleSignIn: пользователь отменил вход")
-                _registerState.value = RegisterState.Idle
+                Log.w(TAG, "startGoogleSignIn: пользователь отменил вход или ошибка конфигурации (SHA-1/Client ID)", e)
+                _registerState.value = RegisterState.Error("Вход отменен. Проверьте SHA-1 в консоли Google.")
             } catch (e: GetCredentialException) {
                 Log.e(TAG, "startGoogleSignIn: GetCredentialException — type=${e.type}", e)
                 _registerState.value = RegisterState.Error("Ошибка входа через Google: ${e.message}")
@@ -146,9 +147,21 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "onAuthorizationResult: serverAuthCode=${if (authResult.serverAuthCode != null) "получен" else "null"}, pendingPrefill=${if (prefill != null) "есть" else "null"}")
         if (prefill == null) {
             Log.w(TAG, "onAuthorizationResult: pendingPrefill пустой, игнорируем")
+            _registerState.value = RegisterState.Idle
             return
         }
         _googlePrefill.value = prefill.copy(serverAuthCode = authResult.serverAuthCode)
+        _registerState.value = RegisterState.Idle
+    }
+
+    fun onAuthCancelled() {
+        Log.d(TAG, "onAuthCancelled: пользователь отменил или ошибка в IntentSender")
+        _registerState.value = RegisterState.Idle
+    }
+
+    fun onError(message: String) {
+        Log.e(TAG, "onError: $message")
+        _registerState.value = RegisterState.Error(message)
     }
 
     // ── Регистрация по форме ──────────────────────────────────────────────────
@@ -209,6 +222,34 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 Log.e(TAG, "register: ошибка сети", e)
                 _registerState.value = RegisterState.Error(e.message ?: "Ошибка подключения")
             }
+        }
+    }
+
+    private fun printSignature(context: Context) {
+        try {
+            val packageInfo = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNATURES)
+            }
+            
+            val signatures = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                packageInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+
+            signatures?.forEach { signature ->
+                val md = java.security.MessageDigest.getInstance("SHA-1")
+                val digest = md.digest(signature.toByteArray())
+                val sha1 = digest.joinToString(":") { "%02X".format(it) }
+                Log.i(TAG, "ТЕКУЩИЙ SHA-1 ПРИЛОЖЕНИЯ: $sha1")
+                Log.i(TAG, "ПАКЕТ ПРИЛОЖЕНИЯ: ${context.packageName}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при получении SHA-1", e)
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.example.amnyamai.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.example.amnyamai.data.local.UserStorage
 import com.example.amnyamai.data.model.Meeting
 import com.example.amnyamai.data.model.MeetingStatus
@@ -9,6 +10,8 @@ import com.example.amnyamai.data.remote.MeetingCreateRequest
 import com.example.amnyamai.data.remote.RetrofitClient
 import com.example.amnyamai.data.remote.TaskUpdateRequest
 import java.time.OffsetDateTime
+
+private const val TAG = "MeetingRepo"
 
 class MeetingRepository(context: Context) {
 
@@ -21,13 +24,26 @@ class MeetingRepository(context: Context) {
     }
 
     suspend fun createMeeting(title: String): Result<Pair<String, String>> {
+        Log.d(TAG, "createMeeting: запуск запроса с заголовком '$title'")
         return try {
             val res = api.createMeeting(MeetingCreateRequest(title))
+            Log.d(TAG, "createMeeting: ответ получен, code=${res.code()}")
             if (res.isSuccessful && res.body() != null) {
                 val id = res.body()!!.id
+                Log.d(TAG, "createMeeting: успех, id=$id")
                 Result.success(id to id.take(8).uppercase())
-            } else Result.failure(Exception("Ошибка создания: ${res.code()}"))
-        } catch (e: Exception) { Result.failure(e) }
+            } else {
+                val error = res.errorBody()?.string()
+                Log.e(TAG, "createMeeting: ошибка бэкенда code=${res.code()} body=$error")
+                Result.failure(Exception("Ошибка создания: ${res.code()}"))
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "createMeeting: Таймаут соединения. Проверьте, запущен ли сервер по адресу ${RetrofitClient.BASE_URL}", e)
+            Result.failure(Exception("Сервер не отвечает. Проверьте подключение к сети."))
+        } catch (e: Exception) {
+            Log.e(TAG, "createMeeting: исключение при запросе", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun finishMeeting(meetingId: String): Result<List<Task>> {

@@ -8,9 +8,19 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    // Для эмулятора: http://10.0.2.2:8000/
-    // Для реального устройства: http://<IP сервера>:8000/
-    const val BASE_URL = "http://192.168.1.218:8000/"
+    private const val DEV_URL = "http://10.0.2.2:8000/"
+    // Используем актуальный IP сервера в локальной сети
+    private const val PROD_URL = "http://192.168.0.102:8000/"
+
+    val BASE_URL: String = (if (isEmulator()) DEV_URL else PROD_URL).also {
+        android.util.Log.d("RetrofitClient", "Используется BASE_URL: $it")
+    }
+
+    private fun isEmulator(): Boolean {
+        return android.os.Build.MODEL.contains("sdk", ignoreCase = true) ||
+                android.os.Build.MODEL.contains("Emulator", ignoreCase = true) ||
+                android.os.Build.FINGERPRINT.contains("generic")
+    }
 
     @Volatile private var token: String? = null
 
@@ -18,15 +28,20 @@ object RetrofitClient {
     fun getToken(): String? = token
 
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
-            token?.let { req.addHeader("Authorization", "Bearer $it") }
+            val currentToken = token
+            if (currentToken != null) {
+                req.addHeader("Authorization", "Bearer $currentToken")
+            } else {
+                android.util.Log.w("RetrofitClient", "TOKEN IS NULL for ${chain.request().url}")
+            }
             chain.proceed(req.build())
         }
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(120, TimeUnit.SECONDS)
+        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.HEADERS })
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
     val apiService: ApiService = Retrofit.Builder()
