@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from google.oauth2.credentials import Credentials
+from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 
 from app.core.config import settings
@@ -22,13 +23,15 @@ class GoogleCalendarService:
         if not settings.google_client_id or not settings.google_client_secret:
             raise CalendarSyncError("Google OAuth client is not configured")
 
+        # Important: do NOT pass scopes here.
+        # Google refresh tokens are bound to the scopes the user granted during consent.
+        # If we pass a scope the refresh token doesn't include, Google may respond with invalid_scope.
         credentials = Credentials(
             token=None,
             refresh_token=user.google_refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=settings.google_client_id,
             client_secret=settings.google_client_secret,
-            scopes=["https://www.googleapis.com/auth/calendar.events"],
         )
         service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
@@ -43,9 +46,15 @@ class GoogleCalendarService:
             "start": {"dateTime": start.isoformat()},
             "end": {"dateTime": end.isoformat()},
         }
-        created = service.events().insert(calendarId="primary", body=event).execute()
+        try:
+            created = service.events().insert(calendarId="primary", body=event).execute()
+        except HttpError as exc:
+            # Typical case: user granted auth, but without Calendar scopes.
+            # Bubble up a readable message; the API layer will convert it to HTTP.
+            raise CalendarSyncError(
+                "Google Calendar permission is missing. Re-login and grant Calendar access."
+            ) from exc
         event_id = created.get("id")
         if not event_id:
             raise CalendarSyncError("Google Calendar returned event without id")
         return event_id
-

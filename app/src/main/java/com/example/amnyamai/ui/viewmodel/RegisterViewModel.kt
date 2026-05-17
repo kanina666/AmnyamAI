@@ -97,7 +97,9 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 // Шаг 2 — Authorization API для serverAuthCode
                 Log.d(TAG, "startGoogleSignIn: запрашиваем serverAuthCode через Authorization API")
                 val authRequest = AuthorizationRequest.builder()
-                    .requestOfflineAccess(GoogleConfig.WEB_CLIENT_ID)
+                    // forceCodeForRefreshToken=true: ensures we can obtain a refresh token even if
+                    // the user has already granted access before (helps when scopes change).
+                    .requestOfflineAccess(GoogleConfig.WEB_CLIENT_ID, true)
                     .setRequestedScopes(
                         listOf(
                             Scope("email"),
